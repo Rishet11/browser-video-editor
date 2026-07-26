@@ -70,8 +70,12 @@ export default function Home() {
       )}
       <Toolbar />
       <div className="flex flex-1 min-h-0">
-        <div className="flex flex-col flex-1">
-          <Stage edl={present} playhead={playhead} onSelectElement={selectElement} />
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
+          {/* min-h-0 lets the canvas shrink instead of pushing the timeline
+              off-screen; Stage fits itself to whatever box it is given. */}
+          <div className="flex-1 min-h-0">
+            <Stage edl={present} playhead={playhead} onSelectElement={selectElement} />
+          </div>
           <PlaybackControls />
         </div>
         <div className="flex flex-col w-72 min-h-0 overflow-y-auto border-l border-neutral-700">

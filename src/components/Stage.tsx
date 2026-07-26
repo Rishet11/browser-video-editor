@@ -20,7 +20,7 @@ function str(v: unknown, fallback: string): string {
 
 export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [box, setBox] = useState({ width: 0, height: 0 });
   const { registerVideoRef } = usePlayback();
 
   useEffect(() => {
@@ -28,15 +28,30 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
+        setBox({ width: entry.contentRect.width, height: entry.contentRect.height });
       }
     });
     observer.observe(el);
-    setContainerWidth(el.getBoundingClientRect().width);
+    const rect = el.getBoundingClientRect();
+    setBox({ width: rect.width, height: rect.height });
     return () => observer.disconnect();
   }, []);
 
-  const scale = containerWidth > 0 ? containerWidth / edl.width : 0;
+  /**
+   * Fit to whichever dimension runs out first.
+   *
+   * Scaling from width alone is the obvious version and it is wrong: on a wide
+   * window the derived height exceeds the space available and the canvas pushes
+   * the timeline off the bottom of the screen. Taking the smaller of the two
+   * ratios letterboxes instead, which is what "scale to fit, preserve aspect
+   * ratio" actually asks for.
+   */
+  const scale =
+    box.width > 0 && box.height > 0
+      ? Math.min(box.width / edl.width, box.height / edl.height)
+      : 0;
+  const displayWidth = edl.width * scale;
+  const displayHeight = edl.height * scale;
   const visible = resolveAt(edl, playhead);
   const visibleIds = new Set(visible.map((el) => el.id));
 
@@ -77,27 +92,41 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
 
   return (
     <div
-      id="stage"
       ref={containerRef}
       style={{
         width: "100%",
-        aspectRatio: `${edl.width} / ${edl.height}`,
-        position: "relative",
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         overflow: "hidden",
         background: "black",
       }}
     >
+      {/* The 16:9 frame itself, sized to the fitted scale so it never overflows. */}
       <div
+        id="stage"
         style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: edl.width,
-          height: edl.height,
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
+          position: "relative",
+          overflow: "hidden",
+          background: "black",
+          width: displayWidth || undefined,
+          height: displayHeight || undefined,
+          aspectRatio: `${edl.width} / ${edl.height}`,
         }}
       >
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: edl.width,
+            height: edl.height,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+        >
         {visible.map((el) => {
           const x = num(el.props.x, 0);
           const y = num(el.props.y, 0);
@@ -203,6 +232,7 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
