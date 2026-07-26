@@ -51,14 +51,18 @@ export async function POST(req: Request) {
       duration: payload.duration,
       width: payload.width,
       height: payload.height,
+      // Layer and element ids are deliberately NOT carried over from the parse.
+      // `parseHtmlToEDL` numbers them deterministically (import-l0, import-e0…)
+      // so it stays unit-testable, but those are primary keys here: persisting
+      // them verbatim means importing the same document twice collides on a
+      // unique constraint and 500s. Letting Prisma's @default(cuid()) assign
+      // them keeps every import independent.
       layers: {
         create: payload.layers.map((layer) => ({
-          id: layer.id,
           name: layer.name,
           index: layer.index,
           elements: {
             create: layer.elements.map((el) => ({
-              id: el.id,
               type: el.type,
               start: el.start,
               duration: el.duration,

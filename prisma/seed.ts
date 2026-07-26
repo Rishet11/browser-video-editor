@@ -33,26 +33,32 @@ async function main() {
 
     await tx.layer.deleteMany({ where: { compositionId: SEED_EDL.id } });
 
-    for (const layer of payload.layers) {
-      await tx.layer.create({
-        data: {
-          id: layer.id,
-          compositionId: SEED_EDL.id,
-          name: layer.name,
-          index: layer.index,
-          elements: {
-            create: layer.elements.map((el) => ({
-              id: el.id,
-              type: el.type,
-              start: el.start,
-              duration: el.duration,
-              trimIn: el.trimIn,
-              props: el.props,
-            })),
-          },
-        },
-      });
-    }
+    // Bulk inserts, not one create per layer: against a managed Postgres the
+    // per-row version accumulates a network round trip per row and blows
+    // Prisma's 5s interactive-transaction budget. Same reasoning as
+    // `replaceComposition` in src/lib/mapping.ts.
+    await tx.layer.createMany({
+      data: payload.layers.map((layer) => ({
+        id: layer.id,
+        compositionId: SEED_EDL.id,
+        name: layer.name,
+        index: layer.index,
+      })),
+    });
+
+    await tx.element.createMany({
+      data: payload.layers.flatMap((layer) =>
+        layer.elements.map((el) => ({
+          id: el.id,
+          layerId: layer.id,
+          type: el.type,
+          start: el.start,
+          duration: el.duration,
+          trimIn: el.trimIn,
+          props: el.props,
+        })),
+      ),
+    });
   });
 
   console.log(`Seeded composition ${SEED_EDL.id}`);

@@ -29,7 +29,7 @@ export const SEED_EDL: EDL = {
             y: 0,
             w: 1920,
             h: 1080,
-            src: "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
+            src: "/demo/bg.jpg",
           },
         },
         {
@@ -37,14 +37,17 @@ export const SEED_EDL: EDL = {
           layerId: "layer-1",
           type: "video",
           start: 7,
-          duration: 8,
-          trimIn: 12,
+          // `/demo/clip.mp4` is 10s long, so trimIn + duration must stay inside
+          // that or the element seeks past the end of the source and shows a
+          // frozen last frame. Source range used here is 2s..8s.
+          duration: 6,
+          trimIn: 2,
           props: {
             x: 0,
             y: 0,
             w: 1920,
             h: 1080,
-            src: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+            src: "/demo/clip.mp4",
           },
         },
       ],
@@ -66,7 +69,7 @@ export const SEED_EDL: EDL = {
             y: 700,
             w: 600,
             h: 300,
-            src: "https://images.unsplash.com/photo-1519681393784-d120267933ba",
+            src: "/demo/overlay.jpg",
           },
         },
       ],

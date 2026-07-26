@@ -112,15 +112,23 @@ const EDL = ${edlJson};
   var inner = document.getElementById("inner");
   var playBtn = document.getElementById("play-btn");
 
+  // Paint order comes from the layer index, not from DOM insertion order, so it
+  // matches Stage.tsx exactly. The editor needs the explicit z-index because it
+  // mounts videos in a separate pass; mirroring it here keeps the two renderers
+  // from diverging if either one's build order ever changes.
   var allElements = [];
-  EDL.layers.forEach(function (layer) {
-    layer.elements.forEach(function (el) { allElements.push(el); });
+  var orderedLayers = EDL.layers.slice().sort(function (a, b) { return a.index - b.index; });
+  orderedLayers.forEach(function (layer, layerOrder) {
+    layer.elements.forEach(function (el, i) {
+      allElements.push({ el: el, z: layerOrder * 1000 + i });
+    });
   });
 
   var nodes = {}; // id -> { root, video? }
 
   // Build every node once, up front. Never recreate them per frame.
-  allElements.forEach(function (el) {
+  allElements.forEach(function (entryDef) {
+    var el = entryDef.el;
     var x = num(el.props.x, 0);
     var y = num(el.props.y, 0);
     var w = num(el.props.w, 100);
@@ -132,6 +140,7 @@ const EDL = ${edlJson};
     root.style.top = y + "px";
     root.style.width = w + "px";
     root.style.height = h + "px";
+    root.style.zIndex = String(entryDef.z);
     root.style.display = "none";
 
     var entry = { root: root };

@@ -98,6 +98,15 @@ export function fromEDL(edl: EDL) {
  * it is idempotent and correct for our scale, at the cost of churning ids
  * for rows that would otherwise be unchanged (ids are preserved from the
  * incoming EDL, so this is a non-issue for callers that already have one).
+ *
+ * The writes are two `createMany` calls rather than one nested `create` per
+ * layer, which keeps the transaction at a FIXED five round trips no matter how
+ * many layers or elements the composition has. That is not a micro-optimisation:
+ * a per-row loop against a managed Postgres over the network accumulates one
+ * network round trip per row, and Prisma's interactive transactions time out at
+ * 5s, so the loop version failed with P2028 on a remote database while passing
+ * against a local one. `createMany` needs no returned rows here, since the
+ * authoritative EDL is re-read at the end anyway.
  */
 export async function replaceComposition(
   prisma: PrismaClient,
@@ -105,6 +114,25 @@ export async function replaceComposition(
   edl: EDL,
 ): Promise<EDL> {
   const payload = fromEDL(edl);
+
+  const layerRows = payload.layers.map((layer) => ({
+    id: layer.id,
+    compositionId: id,
+    name: layer.name,
+    index: layer.index,
+  }));
+
+  const elementRows = payload.layers.flatMap((layer) =>
+    layer.elements.map((el) => ({
+      id: el.id,
+      layerId: layer.id,
+      type: el.type,
+      start: el.start,
+      duration: el.duration,
+      trimIn: el.trimIn,
+      props: el.props,
+    })),
+  );
 
   const updated = await prisma.$transaction(async (tx) => {
     await tx.composition.update({
@@ -119,25 +147,11 @@ export async function replaceComposition(
 
     await tx.layer.deleteMany({ where: { compositionId: id } });
 
-    for (const layer of payload.layers) {
-      await tx.layer.create({
-        data: {
-          id: layer.id,
-          compositionId: id,
-          name: layer.name,
-          index: layer.index,
-          elements: {
-            create: layer.elements.map((el) => ({
-              id: el.id,
-              type: el.type,
-              start: el.start,
-              duration: el.duration,
-              trimIn: el.trimIn,
-              props: el.props,
-            })),
-          },
-        },
-      });
+    if (layerRows.length > 0) {
+      await tx.layer.createMany({ data: layerRows });
+    }
+    if (elementRows.length > 0) {
+      await tx.element.createMany({ data: elementRows });
     }
 
     return tx.composition.findUnique({

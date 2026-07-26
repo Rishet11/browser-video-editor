@@ -53,8 +53,31 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
     [edl],
   );
 
+  /**
+   * Explicit paint order per element id.
+   *
+   * `resolveAt` returns elements already sorted by layer index, and for a single
+   * mapped list DOM order alone would be enough. It is not enough here: videos
+   * are mounted persistently in a second pass after the per-frame children, so
+   * DOM order would always paint them last and a caption on a higher layer would
+   * disappear behind a full-frame video. Deriving `zIndex` from the layer index
+   * keeps the EDL the single authority on stacking, which is what the data model
+   * claims ("Layer.index is both z-order and track position").
+   */
+  const zIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    const ordered = [...edl.layers].sort((a, b) => a.index - b.index);
+    ordered.forEach((layer, layerOrder) => {
+      layer.elements.forEach((el, i) => {
+        map.set(el.id, layerOrder * 1000 + i);
+      });
+    });
+    return map;
+  }, [edl]);
+
   return (
     <div
+      id="stage"
       ref={containerRef}
       style={{
         width: "100%",
@@ -87,6 +110,7 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
             top: y,
             width: w,
             height: h,
+            zIndex: zIndexById.get(el.id) ?? 0,
           };
 
           if (el.type === "text") {
@@ -98,8 +122,16 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
             return (
               <div
                 key={el.id}
+                data-element-id={el.id}
                 onClick={() => onSelectElement?.(el.id)}
-                style={{ ...baseStyle, ...css, position: "absolute", left: x, top: y }}
+                style={{
+                  ...baseStyle,
+                  ...css,
+                  position: "absolute",
+                  left: x,
+                  top: y,
+                  zIndex: zIndexById.get(el.id) ?? 0,
+                }}
               >
                 {text}
               </div>
@@ -109,7 +141,12 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
           if (el.type === "image") {
             const src = str(el.props.src, "");
             return (
-              <div key={el.id} onClick={() => onSelectElement?.(el.id)} style={baseStyle}>
+              <div
+                key={el.id}
+                data-element-id={el.id}
+                onClick={() => onSelectElement?.(el.id)}
+                style={baseStyle}
+              >
                 <img
                   src={src}
                   alt=""
@@ -143,6 +180,7 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
                 top: y,
                 width: w,
                 height: h,
+                zIndex: zIndexById.get(el.id) ?? 0,
                 opacity: isVisible ? 1 : 0,
                 visibility: isVisible ? "visible" : "hidden",
                 pointerEvents: isVisible ? "auto" : "none",
