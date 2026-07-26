@@ -258,7 +258,9 @@ const EDL = ${edlJson};
     if (startTs === null) startTs = now;
     var t = (now - startTs) / 1000;
     if (t >= EDL.duration) {
-      render(EDL.duration - 0.0001 >= 0 ? EDL.duration : 0);
+      // Render the final frame at exactly EDL.duration, matching how the editor's
+      // rAF loop clamps its playhead, so both renderers end on the same frame.
+      render(EDL.duration);
       playing = false;
       rafId = null;
       return;

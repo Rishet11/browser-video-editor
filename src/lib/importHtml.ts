@@ -199,7 +199,16 @@ export function parseHtmlToEDL(html: string, options?: ImportOptions): EDL {
   // (img/video/text) so nesting doesn't hide content. A tag WITH direct text
   // is emitted and its body is not re-scanned (its own text already captured
   // the content; avoids double-counting).
-  function scan(source: string): ParsedElement[] {
+  /**
+   * Depth cap on container recursion. The nesting depth of the input is
+   * attacker-controlled (this parser is reachable from POST /api/editor/import),
+   * so without a bound a payload of deeply nested empty <div>s overflows the
+   * stack and takes down the request. Real compositions nest nowhere near this.
+   */
+  const MAX_DEPTH = 32;
+
+  function scan(source: string, depth = 0): ParsedElement[] {
+    if (depth >= MAX_DEPTH) return [];
     const found: ParsedElement[] = [];
     let match: RegExpExecArray | null;
     const re = new RegExp(tagPattern.source, tagPattern.flags);
@@ -257,7 +266,7 @@ export function parseHtmlToEDL(html: string, options?: ImportOptions): EDL {
         const withoutNested = body.replace(/<[^>]+>[\s\S]*?<\/[^>]+>|<[^>]+\/?>/g, "");
         const directText = collapseWhitespace(decodeEntities(withoutNested));
         if (!directText) {
-          found.push(...scan(body));
+          found.push(...scan(body, depth + 1));
           continue;
         }
 

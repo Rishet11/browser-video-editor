@@ -9,6 +9,7 @@ import PlaybackControls from "@/components/PlaybackControls";
 import Timeline from "@/components/Timeline";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import Toolbar from "@/components/Toolbar";
+import SuggestionsPanel from "@/components/SuggestionsPanel";
 
 /**
  * The composition the editor opens by default. `prisma/seed.ts` inserts it under
@@ -73,7 +74,10 @@ export default function Home() {
           <Stage edl={present} playhead={playhead} onSelectElement={selectElement} />
           <PlaybackControls />
         </div>
-        <PropertiesPanel />
+        <div className="flex flex-col w-72 min-h-0 overflow-y-auto border-l border-neutral-700">
+          <PropertiesPanel />
+          <SuggestionsPanel />
+        </div>
       </div>
       <Timeline />
     </div>

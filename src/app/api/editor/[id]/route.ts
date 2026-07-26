@@ -49,6 +49,15 @@ export async function PUT(
           { status: 400 },
         );
       }
+      // trimIn is checked here too, not just in the per-element PATCH route.
+      // Autosave sends whole compositions through this endpoint, so a gap here
+      // would be the one way an invalid trimIn could reach the database.
+      if (!Number.isFinite(el.trimIn) || el.trimIn < 0) {
+        return Response.json(
+          { error: `Invalid trimIn for element ${el.id}: ${el.trimIn}` },
+          { status: 400 },
+        );
+      }
       if (!isValidDuration(el.duration)) {
         return Response.json(
           { error: `Invalid duration for element ${el.id}: ${el.duration}` },

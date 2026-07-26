@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isValidDuration, isValidStart } from "./validate";
 import {
   type EDL,
   type BaseElement,
@@ -95,7 +96,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   saveStatus: null,
   dragging: false,
 
-  load: (edl) => set({ present: edl, past: [], future: [], playhead: 0 }),
+  load: (edl) => {
+    // Drop any in-flight drag baseline: it belongs to the composition being
+    // replaced, and pushing it onto the new composition's history would let an
+    // undo restore a different composition's data.
+    dragBaseline = null;
+    set({ present: edl, past: [], future: [], playhead: 0, dragging: false });
+  },
   setPlayhead: (t) => set({ playhead: t }),
   setPlaying: (playing) => set({ playing }),
   setSpeed: (speed) => set({ speed }),
@@ -124,6 +131,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   patchElement: (elementId, patch) => {
+    // Validate here, not just in the route. Every other mutator inherits its
+    // rules from the pure transforms in edl.ts, but this one writes fields
+    // directly, so without this check the properties panel could set a negative
+    // trimIn or a sub-minimum duration, autosave would PUT it, and the
+    // composition would be persisted in a state the transforms consider illegal.
+    if (patch.start !== undefined && !isValidStart(patch.start)) return false;
+    if (patch.duration !== undefined && !isValidDuration(patch.duration)) return false;
+    if (
+      patch.trimIn !== undefined &&
+      (!Number.isFinite(patch.trimIn) || patch.trimIn < 0)
+    ) {
+      return false;
+    }
+
     const result = applyTransform(get(), (edl) => {
       const layerIdx = edl.layers.findIndex((l) =>
         l.elements.some((e) => e.id === elementId),

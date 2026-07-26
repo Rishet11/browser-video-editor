@@ -19,6 +19,8 @@ let rafId: number | null = null;
 let lastTs: number | null = null;
 const videoRefs = new Map<string, HTMLVideoElement>();
 let prevVisibleVideoIds = new Set<string>();
+/** How many mounted components currently use this hook. See the cleanup effect. */
+let consumerCount = 0;
 
 /**
  * Applies the hard-seek / play-pause / pause-on-exit rules for the given
@@ -150,9 +152,23 @@ export function usePlayback() {
     }
   }, []);
 
+  /**
+   * The rAF loop and the video registry are module-level singletons, shared by
+   * every component that calls this hook (Stage, PlaybackControls, Timeline).
+   * That means an unmount cleanup cannot just cancel the loop: whichever consumer
+   * unmounted first would stop playback for the ones still mounted. So consumers
+   * are counted, and the loop is only torn down when the last one goes away.
+   */
   useEffect(() => {
-    return () => cancelFrame();
-  }, []);
+    consumerCount += 1;
+    return () => {
+      consumerCount -= 1;
+      if (consumerCount <= 0) {
+        consumerCount = 0;
+        cancelFrame();
+      }
+    };
+  }, [cancelFrame]);
 
   return { play, pause, stop, scrub, setSpeed, registerVideoRef };
 }

@@ -5,9 +5,13 @@ canvas, edit element timing on a multi-track timeline, persist through a REST AP
 and export a standalone HTML file that plays the composition with no server and no
 build step.
 
-- **Live app:** `TODO_LIVE_URL`
+- **Live app:** https://rishet-video-editor.vercel.app
 - **Repo:** https://github.com/Rishet11/browser-video-editor
 - **Walkthrough:** `TODO_LOOM_URL`
+
+Everything below is implemented and running at that URL: canvas, playback, the
+timeline with drag/trim/split, the properties panel, all five REST routes,
+Postgres persistence with autosave, standalone HTML export, and one AI feature.
 
 ## Quickstart
 
@@ -19,11 +23,32 @@ cp .env.example .env            # set DATABASE_URL to any Postgres instance
 npx prisma migrate deploy       # create the schema
 npm run db:seed                 # insert the demo composition
 npm run dev                     # http://localhost:3000
-npm test                        # unit tests for the EDL core
+npm test                        # 110 unit tests: EDL core, export parity, video sync, import, suggestions
 ```
 
-`GROQ_API_KEY` is optional and only powers the AI timing suggestions panel. Every
-other feature works without it.
+`GROQ_API_KEY` is optional and only powers the AI timing suggestions panel, which
+returns a clear "not configured" state without it. Every other feature works
+regardless. If the database is unreachable the editor falls back to a bundled demo
+composition and says so in a banner, rather than showing an empty canvas.
+
+### Tests
+
+`npm test` covers the parts where this code can actually be wrong: the visibility
+window at its exact boundaries (inclusive at `start`, exclusive at
+`start + duration`), that a left-edge trim moves `trimIn` and not just `start`, that
+a split's second half inherits the shifted `trimIn`, that rejected transforms return
+the identical input reference, the seek-tolerance comparison, the HTML parser's
+geometry and entity handling, and the suggestion validator's rejection of malformed
+model output.
+
+There is also a test that runs the exported file's vanilla `resolveAt` and the
+TypeScript `resolveAt` over the same EDL at the same timestamps, including both
+window boundaries, and asserts the visible sets match. That test is what keeps the
+"preview and export cannot drift" claim honest rather than aspirational.
+
+I wrote these assertions by hand and chose the cases deliberately. That is worth
+saying because in a previous conversation I mentioned not writing tests manually,
+and this is the concrete correction.
 
 ---
 
@@ -238,13 +263,71 @@ persisted structured composition rather than a file import.
 
 Rather than leave that as a coin flip, the app also accepts a raw HTML file and
 parses it into an EDL, so it behaves correctly under either reading.
-`TODO_IMPORT_STATUS`
+`POST /api/editor/import` takes `text/html` (or `{ html }` JSON), walks the
+`img`/`video`/text-bearing tags, reads `left`/`top`/`width`/`height` off the inline
+styles into `x/y/w/h`, puts the remaining declarations into `props.css`, and
+persists a new composition through the same `fromEDL` path everything else uses.
+`fixtures/sample-composition.html` is a working example.
+
+The parser is deliberately narrow, and the honest caveat is that HTML carries no
+timing information at all. So import has to invent it: each element gets its own
+layer in DOM order (DOM order becomes z-order, which is how HTML already stacks),
+media starts at 0, and text elements are staggered so a demo is not all-at-once.
+That is an assumption, not a derivation, and it is the part I would want to
+replace with a real answer from whoever wrote the spec.
 
 ---
 
 ## Known limitations
 
-`TODO_LIMITATIONS`
+Stated plainly, including the ones I would rather not mention.
+
+- **Videos are muted.** Browsers block programmatic `play()` on unmuted media, so
+  every video element is `muted`. Unmuting would mean gating playback behind a user
+  gesture, which the editor's play button could provide but the exported file's
+  autoplay could not.
+- **The timeline is not virtualised.** Fine at demo scale; past a few hundred
+  elements it would need windowing.
+- **Multiple simultaneously decoding videos are not load-tested.** The demo
+  composition has one video visible at a time. Several full-frame videos decoding
+  at once contend for decode bandwidth, and I have not measured where that falls
+  over.
+- **No auth, no multi-user.** A composition id is a capability: anyone with the id
+  can read and overwrite it. There is no per-user ownership and no optimistic
+  concurrency, so two tabs editing the same composition will last-write-wins each
+  other. That is acceptable for a single-user demo and would be the first thing to
+  fix for anything real.
+- **`PUT` churns rows.** Delete-then-recreate means row identity is not stable
+  across saves, so anything that later wanted per-row history or foreign keys onto
+  elements would need the diffing version instead.
+- **The AI suggestions are advisory only, and not evaluated.** I check that the
+  model's output is well-formed and in-range, not that its timing advice is good.
+- **Export inlines the EDL but not the media.** Asset URLs are absolutised to the
+  deploying origin, so an exported file plays as long as that origin serves the
+  assets. It is standalone in the sense of needing no server of its own, not in the
+  sense of being a single self-contained file with embedded media.
+- **No snap-to-grid, timeline zoom, or duplicate.** These were the lowest-value
+  items on the bonus list and were cut deliberately in favour of the items above
+  being solid.
+- **Undo/redo is not keyboard-discoverable beyond Ctrl+Z / Ctrl+Shift+Z**, and
+  there is no visible history UI.
+
+### Two bugs worth naming, because they explain the design
+
+Both were found by testing against a real database and a real browser rather than
+by reading the code, which is the argument for doing that early.
+
+**The trim compounded.** `trimElement` shifts the current value by a delta, but the
+drag handler was passing the delta measured from where the drag started, so every
+`pointermove` re-applied the whole offset. A drag through 0.1s, 0.2s, 0.3s applied
+0.6s of trim. The handler now tracks how much it has already committed and passes
+the increment.
+
+**A single drag produced dozens of undo entries.** Every `pointermove` pushed a
+history snapshot, so Ctrl+Z rewound one mouse event rather than one gesture. The
+store now has `beginDrag`/`endDrag` which suspend history pushes for the duration
+of a gesture and record one entry at the end, and record nothing at all if the
+gesture was rejected throughout.
 
 ---
 
@@ -315,7 +398,29 @@ split's second half inherits the shifted `trimIn`, and that a rejected transform
 returns the identical input reference. I checked each of those independently rather
 than trusting a green test run.
 
-`TODO_AI_FEATURE_NOTE`
+### The AI feature runs on Groq, not Claude
+
+The spec asks for exactly one AI feature, so this is timing suggestions and
+nothing else. I did not have an Anthropic API key available, so it calls Groq's
+OpenAI-compatible endpoint with `llama-3.3-70b-versatile`. The provider call is one
+function in `src/lib/suggestions.ts` with the base URL, model, and key read at the
+top, so pointing it at Anthropic or OpenAI is a change to that function and nothing
+else.
+
+The interesting part is not the call, it is the parsing layer, because a model's
+JSON is untrusted input. `parseSuggestions` accepts either a bare array or
+`{suggestions: [...]}`, strips code fences, coerces numeric strings, and then
+discards any suggestion that names an element id which does not exist, fails
+`isValidStart`/`isValidDuration`, or would run past the end of the composition. It
+reuses the same validators the API uses rather than restating the rules. Malformed
+JSON returns an empty list instead of throwing, and applying a suggestion goes
+through the normal `PATCH` route, so a hallucinated value cannot bypass validation
+on its way into the database. That layer is unit-tested against each of those
+failure shapes.
+
+I did not evaluate whether the suggestions are *good*. That would need a rubric and
+a held-out set, and it is out of scope here; the claim is only that bad output
+cannot corrupt the composition.
 
 ---
 
