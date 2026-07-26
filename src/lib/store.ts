@@ -31,6 +31,12 @@ export interface EditorState {
   speed: number;
   /** Autosave indicator: null before the first save attempt. */
   saveStatus: "saving" | "saved" | "error" | null;
+  /**
+   * Set while a pointer drag is in flight. A drag applies many transforms (one
+   * per pointermove) but must be ONE undo step, so history pushes are suspended
+   * between beginDrag and endDrag.
+   */
+  dragging: boolean;
 
   load: (edl: EDL) => void;
   setPlayhead: (t: number) => void;
@@ -47,6 +53,15 @@ export interface EditorState {
     patch: Partial<Pick<BaseElement, "start" | "duration" | "trimIn" | "props">>,
   ) => boolean;
 
+  /**
+   * Coalesce a pointer drag into a single undo step. `beginDrag` remembers the
+   * pre-drag EDL without pushing it; `endDrag` pushes that baseline only if the
+   * drag actually changed something, so a drag that was rejected end-to-end
+   * leaves no empty entry in the history.
+   */
+  beginDrag: () => void;
+  endDrag: () => void;
+
   undo: () => void;
   redo: () => void;
 }
@@ -60,8 +75,14 @@ function applyTransform(
   if (!present) return null;
   const next = transform(present);
   if (next === present) return null; // rejected by the transform
+  // Mid-drag: apply the edit but suspend the history push. endDrag() records
+  // the whole drag as one entry.
+  if (state.dragging) return { present: next };
   return { present: next, past: [...state.past, present], future: [] };
 }
+
+/** Pre-drag EDL, held outside the store so it never triggers a re-render. */
+let dragBaseline: EDL | null = null;
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   present: null,
@@ -72,6 +93,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   playing: false,
   speed: 1,
   saveStatus: null,
+  dragging: false,
 
   load: (edl) => set({ present: edl, past: [], future: [], playhead: 0 }),
   setPlayhead: (t) => set({ playhead: t }),
@@ -118,6 +140,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!result) return false;
     set(result);
     return true;
+  },
+
+  beginDrag: () => {
+    dragBaseline = get().present;
+    set({ dragging: true });
+  },
+
+  endDrag: () => {
+    const { present, past } = get();
+    const baseline = dragBaseline;
+    dragBaseline = null;
+    // Only record history if the drag changed something. A drag that was
+    // rejected throughout leaves the history untouched.
+    if (baseline && present && baseline !== present) {
+      set({ dragging: false, past: [...past, baseline], future: [] });
+    } else {
+      set({ dragging: false });
+    }
   },
 
   undo: () => {
