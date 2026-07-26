@@ -73,12 +73,38 @@ export const MIN_DURATION = 0.5;
  * 4. Pure. No DOM access, no side effects, no clock reads.
  */
 export function resolveAt(edl: EDL, t: number): VisibleElement[] {
-  throw new Error("not implemented");
+  const layersByIndex = [...edl.layers].sort((a, b) => a.index - b.index);
+  const result: VisibleElement[] = [];
+  for (const layer of layersByIndex) {
+    for (const el of layer.elements) {
+      if (el.start <= t && t < el.start + el.duration) {
+        const localTime = el.type === "video" ? el.trimIn + (t - el.start) : t - el.start;
+        result.push({ ...el, localTime });
+      }
+    }
+  }
+  return result;
 }
+
+/**
+ * Rejection semantics for moveElement/trimElement/splitElement: an invalid
+ * operation returns the input EDL UNCHANGED (same reference). Callers detect
+ * rejection with `result === input`. No throwing, no clamping, no partial
+ * application.
+ */
 
 /** Set an element's timeline start. Rejects (returns edl unchanged) if start < 0. */
 export function moveElement(edl: EDL, elementId: string, newStart: number): EDL {
-  throw new Error("not implemented");
+  if (newStart < 0) return edl;
+  const layerIdx = edl.layers.findIndex((l) => l.elements.some((e) => e.id === elementId));
+  if (layerIdx === -1) return edl;
+  const layer = edl.layers[layerIdx];
+  const newElements = layer.elements.map((e) =>
+    e.id === elementId ? { ...e, start: newStart } : e,
+  );
+  const newLayers = edl.layers.slice();
+  newLayers[layerIdx] = { ...layer, elements: newElements };
+  return { ...edl, layers: newLayers };
 }
 
 /**
@@ -95,7 +121,28 @@ export function trimElement(
   edge: "start" | "end",
   delta: number,
 ): EDL {
-  throw new Error("not implemented");
+  const layerIdx = edl.layers.findIndex((l) => l.elements.some((e) => e.id === elementId));
+  if (layerIdx === -1) return edl;
+  const layer = edl.layers[layerIdx];
+  const el = layer.elements.find((e) => e.id === elementId)!;
+
+  let updated: BaseElement;
+  if (edge === "start") {
+    const newStart = el.start + delta;
+    const newTrimIn = el.trimIn + delta;
+    const newDuration = el.duration - delta;
+    if (newStart < 0 || newDuration < MIN_DURATION || newTrimIn < 0) return edl;
+    updated = { ...el, start: newStart, trimIn: newTrimIn, duration: newDuration };
+  } else {
+    const newDuration = el.duration + delta;
+    if (newDuration < MIN_DURATION) return edl;
+    updated = { ...el, duration: newDuration };
+  }
+
+  const newElements = layer.elements.map((e) => (e.id === elementId ? updated : e));
+  const newLayers = edl.layers.slice();
+  newLayers[layerIdx] = { ...layer, elements: newElements };
+  return { ...edl, layers: newLayers };
 }
 
 /**
@@ -104,5 +151,44 @@ export function trimElement(
  * falls outside the element, or if either half would be under MIN_DURATION.
  */
 export function splitElement(edl: EDL, elementId: string, atTime: number): EDL {
-  throw new Error("not implemented");
+  const layerIdx = edl.layers.findIndex((l) => l.elements.some((e) => e.id === elementId));
+  if (layerIdx === -1) return edl;
+  const layer = edl.layers[layerIdx];
+  const el = layer.elements.find((e) => e.id === elementId)!;
+
+  if (atTime <= el.start || atTime >= el.start + el.duration) return edl;
+
+  const firstDuration = atTime - el.start;
+  const secondDuration = el.start + el.duration - atTime;
+  if (firstDuration < MIN_DURATION || secondDuration < MIN_DURATION) return edl;
+
+  let counter = 1;
+  let newId = `${el.id}-split-${counter}`;
+  const existingIds = new Set(edl.layers.flatMap((l) => l.elements.map((e) => e.id)));
+  while (existingIds.has(newId)) {
+    counter += 1;
+    newId = `${el.id}-split-${counter}`;
+  }
+
+  const first: BaseElement = { ...el, duration: firstDuration, props: { ...el.props } };
+  const second: BaseElement = {
+    ...el,
+    id: newId,
+    start: atTime,
+    duration: secondDuration,
+    trimIn: el.trimIn + (atTime - el.start),
+    props: { ...el.props },
+  };
+
+  const newElements: BaseElement[] = [];
+  for (const e of layer.elements) {
+    if (e.id === elementId) {
+      newElements.push(first, second);
+    } else {
+      newElements.push(e);
+    }
+  }
+  const newLayers = edl.layers.slice();
+  newLayers[layerIdx] = { ...layer, elements: newElements };
+  return { ...edl, layers: newLayers };
 }
