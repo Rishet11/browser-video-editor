@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Composition {
+  id        String   @id @default(cuid())
+  name      String
+  duration  Float
+  width     Int      @default(1920)
+  height    Int      @default(1080)
+  layers    Layer[]
+  updatedAt DateTime @updatedAt
+}
+
+model Layer {
+  id            String      @id @default(cuid())
+  compositionId String
+  composition   Composition @relation(fields: [compositionId], references: [id], onDelete: Cascade)
+  name          String
+  index         Int
+  elements      Element[]
+}
+
+model Element {
+  id       String @id @default(cuid())
+  layerId  String
+  layer    Layer  @relation(fields: [layerId], references: [id], onDelete: Cascade)
+  type     String // "text" | "image" | "video"
+  start    Float
+  duration Float
+  trimIn   Float  @default(0)
+  props    Json
+}
