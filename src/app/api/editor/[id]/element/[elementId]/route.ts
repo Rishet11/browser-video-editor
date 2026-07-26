@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { readJson, parseElementPatch } from "@/lib/parseBody";
 import { toEDL } from "@/lib/mapping";
 import { isValidStart, isValidDuration } from "@/lib/validate";
 import type { Prisma } from "@prisma/client";
@@ -27,7 +28,15 @@ export async function PATCH(
     return Response.json({ error: "Element not found" }, { status: 404 });
   }
 
-  const body = (await req.json()) as ElementPatchBody;
+  const json = await readJson(req);
+  if (!json.ok) {
+    return Response.json({ error: json.error }, { status: 400 });
+  }
+  const parsed = parseElementPatch(json.value);
+  if (!parsed.ok) {
+    return Response.json({ error: parsed.error }, { status: 400 });
+  }
+  const body: ElementPatchBody = parsed.value;
 
   const data: Prisma.ElementUpdateInput = {};
 

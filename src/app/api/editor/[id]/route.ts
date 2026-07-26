@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { readJson, parseEDL } from "@/lib/parseBody";
 import { toEDL, replaceComposition } from "@/lib/mapping";
 import { isValidStart, isValidDuration } from "@/lib/validate";
 import type { EDL } from "@/lib/edl";
@@ -39,7 +40,15 @@ export async function PUT(
     return Response.json({ error: "Composition not found" }, { status: 404 });
   }
 
-  const body = (await req.json()) as EDL;
+  const json = await readJson(req);
+  if (!json.ok) {
+    return Response.json({ error: json.error }, { status: 400 });
+  }
+  const parsed = parseEDL(json.value);
+  if (!parsed.ok) {
+    return Response.json({ error: parsed.error }, { status: 400 });
+  }
+  const body = parsed.value;
 
   for (const layer of body.layers) {
     for (const el of layer.elements) {

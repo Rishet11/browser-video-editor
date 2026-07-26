@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { readJson, parseSplitBody } from "@/lib/parseBody";
 import { toEDL, replaceComposition } from "@/lib/mapping";
 import { splitElement } from "@/lib/edl";
 
@@ -29,7 +30,15 @@ export async function POST(
     return Response.json({ error: "Composition not found" }, { status: 404 });
   }
 
-  const body = (await req.json()) as SplitBody;
+  const json = await readJson(req);
+  if (!json.ok) {
+    return Response.json({ error: json.error }, { status: 400 });
+  }
+  const parsed = parseSplitBody(json.value);
+  if (!parsed.ok) {
+    return Response.json({ error: parsed.error }, { status: 400 });
+  }
+  const body: SplitBody = parsed.value;
   const edl = toEDL(composition);
   const result = splitElement(edl, body.elementId, body.atTime);
 
