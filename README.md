@@ -87,14 +87,19 @@ playhead by `dt * speed`, calls `resolveAt` once per frame, and writes the resul
 to the DOM. Speed changes the multiplier, not the tick rate. Scrubbing while paused
 calls `resolveAt` once and starts no loop at all.
 
-```
-Postgres ──Prisma──> toEDL() ──> REST ──> Zustand store ──> resolveAt(edl, t)
-                                              │                    │
-                                    pure EDL transforms      ┌─────┼─────┐
-                                    (move/trim/split)        │     │     │
-                                              │           Canvas Timeline Export
-                                         undo/redo
-                                       snapshot stack
+The composition itself is just a serialisable JSON EDL. Everything that plays it back, the React canvas, the exported standalone HTML, and the API's own validation, calls the same pure function rather than three separate renderers agreeing by convention.
+
+```mermaid
+flowchart LR
+    PG[(Postgres)] -- Prisma --> MAP["toEDL / fromEDL<br/>src/lib/mapping.ts"]
+    MAP -- REST --> Store["Zustand store<br/>pure EDL transforms"]
+    Store --> EDL[/"EDL JSON"/]
+    EDL --> RA["resolveAt(edl, t)<br/>src/lib/edl.ts"]
+    EDL --> RAmirror["resolveAt, vanilla JS mirror<br/>src/lib/exportHtml.ts"]
+    RA -.->|"exportParity.test.ts<br/>asserts identical output"| RAmirror
+    RA --> Canvas["Canvas and Timeline"]
+    RA --> API["API validation"]
+    RAmirror --> Export["Exported standalone HTML"]
 ```
 
 ### Rejection is a return value, not an exception
@@ -252,6 +257,8 @@ locally and `PUT` the whole composition, which would be one fewer endpoint. The
 brief asks for the route, and having the server own the operation means a
 non-browser client gets the same validation.
 
+**The export mirror hand-duplicates `resolveAt` in vanilla JS.** `src/lib/exportHtml.ts:73-81` reimplements `resolveAt` from `src/lib/edl.ts` by hand, because the exported file has no bundler and no imports, so it cannot just call the TypeScript function. A copy is a liability: it can drift from the original while everything still compiles and every other test still passes. `src/lib/exportParity.test.ts` is the mitigation, it extracts the vanilla implementation out of the generated document and runs it head-to-head against the real `resolveAt` over the same EDL, including the exact window boundaries. This is the trade-off most likely to bite a future maintainer who edits `resolveAt` without noticing the mirror, and it is why that test exists rather than a comment alone.
+
 ---
 
 ## An ambiguity in the brief, and how I resolved it
@@ -297,6 +304,7 @@ Stated plainly, including the ones I would rather not mention.
   concurrency, so two tabs editing the same composition will last-write-wins each
   other. That is acceptable for a single-user demo and would be the first thing to
   fix for anything real.
+- **`trimIn` is not clamped against the source media's actual duration.** Trimming past the end of a video file silently produces an out-of-range offset rather than an error. The editor has no way to know a video's real duration until the browser loads its metadata, and nothing currently checks the trim against it, client-side or server-side.
 - **`PUT` churns rows.** Delete-then-recreate means row identity is not stable
   across saves, so anything that later wanted per-row history or foreign keys onto
   elements would need the diffing version instead.
@@ -336,6 +344,8 @@ gesture was rejected throughout.
 The natural extension of this design is the pipeline that turns raw footage into a
 finished cut automatically, and the EDL is what makes that tractable.
 
+Build this in the order above and not out of it: transcript first, because every later step (keyword extraction, B-roll fetch, rendering) depends on having word-level timings to place things against, and getting that ordering backwards means building steps that have nothing correct to anchor to yet.
+
 Start with a word-timestamped transcript (Whisper or Deepgram) of the uploaded
 video. Word-level timings, not sentence-level, because every downstream step needs
 to place things to a fraction of a second. That transcript generates an EDL
@@ -350,6 +360,24 @@ segment is about, and use those keywords to fetch B-roll (a stock API like Pexel
 or generated clips) as video elements on a lower layer, with `trimIn` set to the
 usable part of each asset. Overlays and lower-thirds are the same insert operation
 against the same EDL.
+
+The current editor is not a prototype sitting next to this pipeline, it is the component inside it that owns the EDL and the timing correctness everything downstream relies on.
+
+```mermaid
+flowchart LR
+    A["Uploaded video"] --> B["Word-timestamped transcript<br/>Whisper or Deepgram"]
+    B --> C[/"Generated EDL"/]
+    C --> D["Keyword extraction per segment"]
+    D --> F["B-roll fetch onto a lower layer<br/>stock API or generated clips"]
+    C --> E["This editor<br/>preview, trim, split, undo"]
+    F --> E
+    E --> G["Queued render worker<br/>FFmpeg or Remotion"]
+    G --> H[("Object storage")]
+    H --> I["Signed URL"]
+
+    classDef current fill:#f5c542,stroke:#8a6d00,color:#000,font-weight:bold;
+    class E current;
+```
 
 Rendering a final file is where this stops being a browser problem. Export would
 move to a queued worker rather than a request: enqueue a render job, have a
@@ -400,12 +428,24 @@ than trusting a green test run.
 
 ### The AI feature runs on Groq, not Claude
 
-The spec asks for exactly one AI feature, so this is timing suggestions and
-nothing else. I did not have an Anthropic API key available, so it calls Groq's
+The spec asks for at least one AI feature. There are two here, and they solve
+different problems rather than the same problem twice. **Timing suggestions**
+rewrites an existing element's `start` and `duration`. **B-roll suggestions**
+answers a different question: given the content and its timing, where does the
+timeline have a coverage gap, and what footage would fill it.
+
+Both are implemented end to end: prompt, provider call, response validation, and
+graceful degradation when the key is absent. I did not have an Anthropic API key available, so it calls Groq's
 OpenAI-compatible endpoint with `llama-3.3-70b-versatile`. The provider call is one
-function in `src/lib/suggestions.ts` with the base URL, model, and key read at the
-top, so pointing it at Anthropic or OpenAI is a change to that function and nothing
-else.
+function, `callGroq` in `src/lib/ai/groq.ts`, with the base URL, model, and key read
+at the top, so pointing it at Anthropic or OpenAI is a change to that function and
+nothing else. Both features share it, along with three low-level parsing helpers.
+They deliberately do not share a validator. I considered a generic
+`parseStructuredOutput<T>(raw, schema)` and rejected it: the actual guardrails
+differ per feature, an element-id existence check for timing against an
+overlap-against-real-elements check for B-roll, so a shared validator would either
+be too loose to catch either case or would need per-feature callbacks costing more
+code than writing the two separately.
 
 The interesting part is not the call, it is the parsing layer, because a model's
 JSON is untrusted input. `parseSuggestions` accepts either a bare array or
@@ -418,9 +458,27 @@ through the normal `PATCH` route, so a hallucinated value cannot bypass validati
 on its way into the database. That layer is unit-tested against each of those
 failure shapes.
 
+`parseBrollSuggestions` in `src/lib/broll.ts` applies the same discipline, plus one
+check with no equivalent in timing suggestions: a suggested gap is discarded if it
+actually overlaps an existing element on any layer. A model claiming empty space
+that is not empty is the B-roll analogue of a hallucinated element id, and it is the
+failure mode this feature is most likely to produce.
+
+B-roll suggestions stop at search terms and a shot type. They do not call a
+stock-footage API and do not insert a video element with a fabricated `src`. Doing
+that convincingly would need a real provider integration and a licensing story, and
+a fake one would be worse than the honest boundary. In the pipeline sketched under
+Future work, this is the stage immediately before an asset fetch, and it is the part
+that does not depend on which provider you pick.
+
 I did not evaluate whether the suggestions are *good*. That would need a rubric and
 a held-out set, and it is out of scope here; the claim is only that bad output
-cannot corrupt the composition.
+cannot corrupt the composition. `src/lib/suggestions.eval.test.ts` goes one step
+past that claim: it builds a composition with a deliberate overlap and shows both
+that a correct suggestion resolves it and that a syntactically valid, in-range
+suggestion can pass validation and still leave the defect in place. The validator
+checks shape and range, not whether the advice is right, and that test says so in
+executable form rather than in a sentence.
 
 ---
 
