@@ -23,7 +23,7 @@ cp .env.example .env            # set DATABASE_URL to any Postgres instance
 npx prisma migrate deploy       # create the schema
 npm run db:seed                 # insert the demo composition
 npm run dev                     # http://localhost:3000
-npm test                        # 110 unit tests: EDL core, export parity, video sync, import, suggestions
+npm test                        # 129 unit tests: EDL core, export parity, video sync, import, suggestions, B-roll
 ```
 
 `GROQ_API_KEY` is optional and only powers the AI timing suggestions panel, which
@@ -46,9 +46,9 @@ TypeScript `resolveAt` over the same EDL at the same timestamps, including both
 window boundaries, and asserts the visible sets match. That test is what keeps the
 "preview and export cannot drift" claim honest rather than aspirational.
 
-I wrote these assertions by hand and chose the cases deliberately. That is worth
-saying because in a previous conversation I mentioned not writing tests manually,
-and this is the concrete correction.
+I wrote these assertions by hand and chose the cases deliberately. I mention it
+because in my technical interview on 24 July I said I lean on tooling rather than
+writing tests myself, and this is the concrete correction to that.
 
 ---
 
@@ -299,11 +299,15 @@ Stated plainly, including the ones I would rather not mention.
   composition has one video visible at a time. Several full-frame videos decoding
   at once contend for decode bandwidth, and I have not measured where that falls
   over.
-- **No auth, no multi-user.** A composition id is a capability: anyone with the id
-  can read and overwrite it. There is no per-user ownership and no optimistic
-  concurrency, so two tabs editing the same composition will last-write-wins each
-  other. That is acceptable for a single-user demo and would be the first thing to
-  fix for anything real.
+- **No auth.** A composition id is a capability: anyone with the id can read and
+  overwrite it. There is no per-user ownership. That is acceptable for a
+  single-user demo and would be the first thing to fix for anything real.
+- **Concurrent editing is detected, not resolved.** `PUT` honours
+  `If-Unmodified-Since` and returns 409 rather than silently overwriting a newer
+  version, so a second tab is told its copy is stale instead of quietly winning.
+  What does not exist is a merge: the client surfaces the conflict and asks the
+  user to reload, losing that tab's unsaved edits. Real multi-user editing needs
+  per-element operations and a merge strategy, not a whole-composition compare.
 - **`trimIn` is not clamped against the source media's actual duration.** Trimming past the end of a video file silently produces an out-of-range offset rather than an error. The editor has no way to know a video's real duration until the browser loads its metadata, and nothing currently checks the trim against it, client-side or server-side.
 - **`PUT` churns rows.** Delete-then-recreate means row identity is not stable
   across saves, so anything that later wanted per-row history or foreign keys onto
@@ -482,10 +486,10 @@ executable form rather than in a sentence.
 
 ---
 
-## A correction, unrelated to the code
+## A correction from the interview, unrelated to the code
 
-In our last conversation I said prompt-cached tokens are stored locally. That was
-wrong. The KV cache is held server-side by the provider under a TTL, which is why
+In the technical interview on 24 July I said prompt-cached tokens are stored
+locally. That was wrong. The KV cache is held server-side by the provider under a TTL, which is why
 the discount only applies inside that window, and why prefix stability matters so
 much: a change near the beginning of a prompt invalidates the cached prefix and the
 rest is recomputed at full price. I looked it up afterwards and would rather
