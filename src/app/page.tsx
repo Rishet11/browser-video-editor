@@ -65,8 +65,14 @@ export default function Home() {
     );
   }
 
+  // min-h-0 on this root matters: as a flex child of `body` it defaults to
+  // min-height:auto, so it cannot shrink below its own min-content height. Once the
+  // side panels are taller than the viewport that pins the page open past the window,
+  // and because `body` is overflow-hidden the excess is clipped with no scrollbar
+  // anywhere. min-h-0 lets it shrink so the panel column's own overflow-y-auto is
+  // what scrolls.
   return (
-    <div className="flex flex-col flex-1 bg-black">
+    <div className="flex flex-col flex-1 min-h-0 bg-black">
       {loadError && (
         <div className="px-3 py-2 text-xs bg-amber-900/60 text-amber-100 border-b border-amber-700">
           {loadError}
