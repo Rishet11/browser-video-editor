@@ -232,7 +232,7 @@ export default function Timeline() {
       </div>
       <div
         ref={tracksContainerRef}
-        className="relative"
+        className="relative overflow-hidden"
         onClick={handleTrackClick}
         style={{ cursor: "text" }}
       >

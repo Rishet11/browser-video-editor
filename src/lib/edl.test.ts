@@ -116,6 +116,19 @@ describe("moveElement", () => {
     const a = result.layers[0].elements.find((e) => e.id === "a")!;
     expect(a.start).toBe(7.219);
   });
+
+  it("rejects a move that would push start + duration past the composition duration", () => {
+    const edl = makeEdl();
+    const result = moveElement(edl, "a", 16); // 16 + 5 = 21 > 20
+    expect(result).toBe(edl);
+  });
+
+  it("allows a move that lands exactly at the composition duration boundary", () => {
+    const edl = makeEdl();
+    const result = moveElement(edl, "a", 15); // 15 + 5 = 20 === edl.duration
+    const a = result.layers[0].elements.find((e) => e.id === "a")!;
+    expect(a.start).toBe(15);
+  });
 });
 
 describe("trimElement", () => {
@@ -163,6 +176,19 @@ describe("trimElement", () => {
     const result = trimElement(edl, "b", "end", 0.1234567);
     const b = result.layers[1].elements.find((e) => e.id === "b")!;
     expect(b.duration).toBe(6.123);
+  });
+
+  it("rejects an end-edge trim that would push start + duration past the composition duration", () => {
+    const edl = makeEdl();
+    const result = trimElement(edl, "b", "end", 12.1); // start 2 + duration 18.1 = 20.1 > 20
+    expect(result).toBe(edl);
+  });
+
+  it("allows an end-edge trim that lands exactly at the composition duration boundary", () => {
+    const edl = makeEdl();
+    const result = trimElement(edl, "b", "end", 12); // start 2 + duration 18 === edl.duration
+    const b = result.layers[1].elements.find((e) => e.id === "b")!;
+    expect(b.duration).toBe(18);
   });
 });
 

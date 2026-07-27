@@ -104,13 +104,18 @@ export function resolveAt(edl: EDL, t: number): VisibleElement[] {
  * application.
  */
 
-/** Set an element's timeline start. Rejects (returns edl unchanged) if start < 0. */
+/**
+ * Set an element's timeline start. Rejects (returns edl unchanged) if start < 0
+ * or if the resulting `start + duration` would exceed the composition duration.
+ */
 export function moveElement(edl: EDL, elementId: string, newStart: number): EDL {
   if (newStart < 0) return edl;
   const layerIdx = edl.layers.findIndex((l) => l.elements.some((e) => e.id === elementId));
   if (layerIdx === -1) return edl;
   const layer = edl.layers[layerIdx];
+  const el = layer.elements.find((e) => e.id === elementId)!;
   const roundedStart = roundMs(newStart);
+  if (roundMs(roundedStart + el.duration) > roundMs(edl.duration)) return edl;
   const newElements = layer.elements.map((e) =>
     e.id === elementId ? { ...e, start: roundedStart } : e,
   );
@@ -124,8 +129,9 @@ export function moveElement(edl: EDL, elementId: string, newStart: number): EDL 
  *
  * "start" edge: shifts `start` AND `trimIn` by the same delta, so the source
  * offset tracks the timeline edge. "end" edge: changes `duration` only.
- * Rejects if the result would put `duration` below MIN_DURATION or `start`
- * below 0.
+ * Rejects if the result would put `duration` below MIN_DURATION, `start`
+ * below 0, or (for the "end" edge) `start + duration` above the composition
+ * duration.
  */
 export function trimElement(
   edl: EDL,
@@ -148,6 +154,7 @@ export function trimElement(
   } else {
     const newDuration = roundMs(el.duration + delta);
     if (newDuration < MIN_DURATION) return edl;
+    if (roundMs(el.start + newDuration) > roundMs(edl.duration)) return edl;
     updated = { ...el, duration: newDuration };
   }
 
