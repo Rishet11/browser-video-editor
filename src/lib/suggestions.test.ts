@@ -90,6 +90,14 @@ describe("parseSuggestions", () => {
     expect(parseSuggestions(raw, edl)).toEqual([]);
   });
 
+  it("drops a suggestion identical to the element's current start/duration", () => {
+    const edl = makeEdl();
+    const raw = JSON.stringify({
+      suggestions: [{ elementId: "el-1", suggestedStart: 0, suggestedDuration: 2, reason: "no-op" }],
+    });
+    expect(parseSuggestions(raw, edl)).toEqual([]);
+  });
+
   it("coerces numeric strings to numbers", () => {
     const edl = makeEdl();
     const raw = JSON.stringify({
