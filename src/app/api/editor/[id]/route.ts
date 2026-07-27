@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { readJson, parseEDL } from "@/lib/parseBody";
 import { toEDL, replaceComposition } from "@/lib/mapping";
 import { isValidStart, isValidDuration } from "@/lib/validate";
-import type { EDL } from "@/lib/edl";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +26,18 @@ export async function GET(
   if (!composition) {
     return Response.json({ error: "Composition not found" }, { status: 404 });
   }
-  return Response.json(toEDL(composition));
+  return Response.json(toEDL(composition), {
+    headers: { "Last-Modified": composition.updatedAt.toUTCString() },
+  });
+}
+
+// HTTP dates (If-Unmodified-Since / Last-Modified) only carry second-level
+// resolution, but Prisma's updatedAt is millisecond-precise. Comparing the
+// raw timestamps would flag a false conflict any time the DB row's ms
+// component differs from :000, even when the client's copy is actually
+// current. Flooring both sides to whole seconds before comparing avoids that.
+function toEpochSeconds(date: Date): number {
+  return Math.floor(date.getTime() / 1000);
 }
 
 export async function PUT(
@@ -38,6 +48,24 @@ export async function PUT(
   const existing = await loadComposition(id);
   if (!existing) {
     return Response.json({ error: "Composition not found" }, { status: 404 });
+  }
+
+  const ifUnmodifiedSince = req.headers.get("if-unmodified-since");
+  if (ifUnmodifiedSince) {
+    const clientTime = new Date(ifUnmodifiedSince);
+    if (
+      !Number.isNaN(clientTime.getTime()) &&
+      toEpochSeconds(clientTime) < toEpochSeconds(existing.updatedAt)
+    ) {
+      return Response.json(
+        {
+          error: "conflict",
+          message: "Someone else changed this. Reload to get the latest.",
+          updatedAt: existing.updatedAt.toISOString(),
+        },
+        { status: 409 },
+      );
+    }
   }
 
   const json = await readJson(req);
@@ -77,5 +105,13 @@ export async function PUT(
   }
 
   const edl = await replaceComposition(prisma, id, body);
-  return Response.json(edl);
+  const updated = await prisma.composition.findUnique({
+    where: { id },
+    select: { updatedAt: true },
+  });
+  return Response.json(edl, {
+    headers: updated
+      ? { "Last-Modified": updated.updatedAt.toUTCString() }
+      : undefined,
+  });
 }

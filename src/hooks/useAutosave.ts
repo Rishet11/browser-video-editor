@@ -24,7 +24,14 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
 export function useAutosave(enabled: boolean) {
   const present = useEditorStore((s) => s.present);
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus);
+  const lastModified = useEditorStore((s) => s.lastModified);
+  const setLastModified = useEditorStore((s) => s.setLastModified);
   const lastSavedRef = useRef<EDL | null>(null);
+  /** Read inside the debounced callback so the PUT sends the freshest value. */
+  const lastModifiedRef = useRef<string | null>(lastModified);
+  useEffect(() => {
+    lastModifiedRef.current = lastModified;
+  }, [lastModified]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Aborts a save that is still in flight when a newer edit supersedes it. */
   const inFlightRef = useRef<AbortController | null>(null);
@@ -47,14 +54,27 @@ export function useAutosave(enabled: boolean) {
       inFlightRef.current = controller;
       setSaveStatus("saving");
 
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (lastModifiedRef.current) {
+        headers["if-unmodified-since"] = lastModifiedRef.current;
+      }
+
       fetch(`/api/editor/${snapshot.id}`, {
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify(snapshot),
         signal: controller.signal,
       })
         .then((res) => {
+          if (res.status === 409) {
+            // Do not retry and do not mark saved: leaving lastSavedRef stale
+            // means a later edit will still be recognized as unsaved.
+            setSaveStatus("conflict");
+            return;
+          }
           if (!res.ok) throw new Error(`save failed: ${res.status}`);
+          const newLastModified = res.headers.get("last-modified");
+          if (newLastModified) setLastModified(newLastModified);
           lastSavedRef.current = snapshot;
           setSaveStatus("saved");
         })
@@ -68,7 +88,7 @@ export function useAutosave(enabled: boolean) {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [enabled, present, setSaveStatus]);
+  }, [enabled, present, setSaveStatus, setLastModified]);
 
   useEffect(() => {
     return () => inFlightRef.current?.abort();

@@ -23,6 +23,7 @@ export default function Home() {
   const playhead = useEditorStore((s) => s.playhead);
   const load = useEditorStore((s) => s.load);
   const selectElement = useEditorStore((s) => s.selectElement);
+  const setLastModified = useEditorStore((s) => s.setLastModified);
 
   const loadStartedRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -39,7 +40,9 @@ export default function Home() {
     fetch(`/api/editor/${DEFAULT_COMPOSITION_ID}`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`load failed: ${res.status}`);
+        const lastModified = res.headers.get("last-modified");
         load(await res.json());
+        if (lastModified) setLastModified(lastModified);
         setPersisted(true);
       })
       .catch(() => {
@@ -51,7 +54,7 @@ export default function Home() {
           "Could not reach the database. Showing the bundled demo composition; edits will not be saved.",
         );
       });
-  }, [load]);
+  }, [load, setLastModified]);
 
   if (!present) {
     return (

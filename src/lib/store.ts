@@ -31,7 +31,15 @@ export interface EditorState {
   playing: boolean;
   speed: number;
   /** Autosave indicator: null before the first save attempt. */
-  saveStatus: "saving" | "saved" | "error" | null;
+  saveStatus: "saving" | "saved" | "error" | "conflict" | null;
+  /**
+   * Last-Modified value observed from the server (initial GET, or echoed back
+   * by a successful PUT). Threaded into autosave's If-Unmodified-Since header
+   * so it can detect a concurrent edit. Stored here (rather than a ref local
+   * to one hook) because both the loading component and useAutosave need it,
+   * and it's already the shared source of truth for server-loaded state.
+   */
+  lastModified: string | null;
   /**
    * Set while a pointer drag is in flight. A drag applies many transforms (one
    * per pointermove) but must be ONE undo step, so history pushes are suspended
@@ -45,6 +53,7 @@ export interface EditorState {
   setSpeed: (speed: number) => void;
   selectElement: (id: string | null) => void;
   setSaveStatus: (status: EditorState["saveStatus"]) => void;
+  setLastModified: (value: string | null) => void;
 
   moveElement: (elementId: string, newStart: number) => boolean;
   trimElement: (elementId: string, edge: "start" | "end", delta: number) => boolean;
@@ -94,6 +103,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   playing: false,
   speed: 1,
   saveStatus: null,
+  lastModified: null,
   dragging: false,
 
   load: (edl) => {
@@ -108,6 +118,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setSpeed: (speed) => set({ speed }),
   selectElement: (id) => set({ selectedElementId: id }),
   setSaveStatus: (saveStatus) => set({ saveStatus }),
+  setLastModified: (lastModified) => set({ lastModified }),
 
   moveElement: (elementId, newStart) => {
     const patch = applyTransform(get(), (edl) => moveEl(edl, elementId, newStart));

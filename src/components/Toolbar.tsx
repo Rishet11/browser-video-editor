@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { useEditorStore } from "@/lib/store";
 
-function saveStatusLabel(status: "saving" | "saved" | "error" | null): string | null {
+function saveStatusLabel(
+  status: "saving" | "saved" | "error" | "conflict" | null,
+): string | null {
   if (status === "saving") return "saving…";
   if (status === "saved") return "saved";
   if (status === "error") return "save failed";
+  if (status === "conflict") return "Someone else changed this. Reload to get the latest.";
   return null;
 }
 
