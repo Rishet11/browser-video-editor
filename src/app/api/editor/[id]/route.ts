@@ -50,7 +50,12 @@ export async function PUT(
     return Response.json({ error: "Composition not found" }, { status: 404 });
   }
 
-  const ifUnmodifiedSince = req.headers.get("if-unmodified-since");
+  // Custom header, not the standard `If-Unmodified-Since`: Vercel's CDN
+  // intercepts the standard conditional header at the edge and returns its
+  // own plain-text 412 before the request ever reaches this function, which
+  // silently kills the 409-conflict feature in production. Using an
+  // `x-`-prefixed name avoids that platform-reserved interception.
+  const ifUnmodifiedSince = req.headers.get("x-if-unmodified-since");
   if (ifUnmodifiedSince) {
     const clientTime = new Date(ifUnmodifiedSince);
     if (

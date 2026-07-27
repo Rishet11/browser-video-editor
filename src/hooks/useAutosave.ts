@@ -56,7 +56,7 @@ export function useAutosave(enabled: boolean) {
 
       const headers: Record<string, string> = { "content-type": "application/json" };
       if (lastModifiedRef.current) {
-        headers["if-unmodified-since"] = lastModifiedRef.current;
+        headers["x-if-unmodified-since"] = lastModifiedRef.current;
       }
 
       fetch(`/api/editor/${snapshot.id}`, {

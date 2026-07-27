@@ -39,6 +39,19 @@ function coerceProps(value: Prisma.JsonValue): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Merges a partial props patch over an element's existing props for PATCH.
+ * Deliberately shallow: `css` (and any other nested object) is replaced
+ * wholesale rather than deep-merged, since deep merging would make it
+ * impossible for a caller to remove a key from `css`.
+ */
+export function mergeProps(
+  existing: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...(existing ?? {}), ...incoming };
+}
+
 /** DB row -> flat EDL. Assumes layers/elements are already ordered by index. */
 export function toEDL(composition: CompositionWithRelations): EDL {
   return {

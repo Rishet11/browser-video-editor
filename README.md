@@ -259,6 +259,17 @@ non-browser client gets the same validation.
 
 **The export mirror hand-duplicates `resolveAt` in vanilla JS.** `src/lib/exportHtml.ts:73-81` reimplements `resolveAt` from `src/lib/edl.ts` by hand, because the exported file has no bundler and no imports, so it cannot just call the TypeScript function. A copy is a liability: it can drift from the original while everything still compiles and every other test still passes. `src/lib/exportParity.test.ts` is the mitigation, it extracts the vanilla implementation out of the generated document and runs it head-to-head against the real `resolveAt` over the same EDL, including the exact window boundaries. This is the trade-off most likely to bite a future maintainer who edits `resolveAt` without noticing the mirror, and it is why that test exists rather than a comment alone.
 
+**The stale-write check uses `X-If-Unmodified-Since`, not the standard header.**
+This started as `If-Unmodified-Since`, which is exactly the semantic wanted and
+needs no ETag scheme. It worked locally and failed in production. Vercel's CDN
+treats the standard conditional header as its own concern, and returns a
+plain-text `412 PRECONDITION_FAILED` from the edge before the request reaches the
+function at all, so the 409 the client was written to handle never arrived. An
+`x-`-prefixed name is not interpreted by the edge and passes straight through.
+The `Last-Modified` response header is unaffected and stays standard; only the
+conditional request header had to move. I found this by testing the deployment
+rather than localhost, which is the only place the difference exists.
+
 ---
 
 ## An ambiguity in the brief, and how I resolved it
@@ -303,7 +314,7 @@ Stated plainly, including the ones I would rather not mention.
   overwrite it. There is no per-user ownership. That is acceptable for a
   single-user demo and would be the first thing to fix for anything real.
 - **Concurrent editing is detected, not resolved.** `PUT` honours
-  `If-Unmodified-Since` and returns 409 rather than silently overwriting a newer
+  `X-If-Unmodified-Since` and returns 409 rather than silently overwriting a newer
   version, so a second tab is told its copy is stale instead of quietly winning.
   What does not exist is a merge: the client surfaces the conflict and asks the
   user to reload, losing that tab's unsaved edits. Real multi-user editing needs

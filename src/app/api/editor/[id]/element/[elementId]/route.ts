@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { readJson, parseElementPatch } from "@/lib/parseBody";
-import { toEDL } from "@/lib/mapping";
+import { toEDL, mergeProps } from "@/lib/mapping";
 import { isValidStart, isValidDuration } from "@/lib/validate";
 import type { Prisma } from "@prisma/client";
 
@@ -71,7 +71,13 @@ export async function PATCH(
   }
 
   if (body.props !== undefined) {
-    data.props = body.props as Prisma.InputJsonValue;
+    const existingProps =
+      element.props !== null &&
+      typeof element.props === "object" &&
+      !Array.isArray(element.props)
+        ? (element.props as Record<string, unknown>)
+        : null;
+    data.props = mergeProps(existingProps, body.props) as Prisma.InputJsonValue;
   }
 
   await prisma.element.update({
