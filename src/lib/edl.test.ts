@@ -109,6 +109,13 @@ describe("moveElement", () => {
     const result = moveElement(edl, "a", -1);
     expect(result).toBe(edl);
   });
+
+  it("rounds a fractional start to millisecond precision", () => {
+    const edl = makeEdl();
+    const result = moveElement(edl, "a", 7.219075527362293);
+    const a = result.layers[0].elements.find((e) => e.id === "a")!;
+    expect(a.start).toBe(7.219);
+  });
 });
 
 describe("trimElement", () => {
@@ -140,6 +147,22 @@ describe("trimElement", () => {
     const edl = makeEdl();
     const result = trimElement(edl, "b", "start", -3);
     expect(result).toBe(edl);
+  });
+
+  it("rounds a fractional start-edge delta to millisecond precision, including trimIn", () => {
+    const edl = makeEdl();
+    const result = trimElement(edl, "b", "start", 0.1111119);
+    const b = result.layers[1].elements.find((e) => e.id === "b")!;
+    expect(b.start).toBe(2.111);
+    expect(b.trimIn).toBe(3.111);
+    expect(b.duration).toBe(5.889);
+  });
+
+  it("rounds a fractional end-edge delta to millisecond precision", () => {
+    const edl = makeEdl();
+    const result = trimElement(edl, "b", "end", 0.1234567);
+    const b = result.layers[1].elements.find((e) => e.id === "b")!;
+    expect(b.duration).toBe(6.123);
   });
 });
 
@@ -177,5 +200,15 @@ describe("splitElement", () => {
     const edl = makeEdl();
     const result = splitElement(edl, "b", 2.1);
     expect(result).toBe(edl);
+  });
+
+  it("rounds a fractional split time to millisecond precision", () => {
+    const edl = makeEdl();
+    const result = splitElement(edl, "b", 4.123456789);
+    const [first, second] = result.layers[1].elements;
+    expect(first.duration).toBe(2.123);
+    expect(second.start).toBe(4.123);
+    expect(second.trimIn).toBe(5.123);
+    expect(second.duration).toBe(3.877);
   });
 });

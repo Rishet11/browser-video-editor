@@ -64,6 +64,17 @@ export interface VisibleElement extends BaseElement {
 export const MIN_DURATION = 0.5;
 
 /**
+ * Round to millisecond precision (3dp). Timeline drag/trim/split all derive
+ * from pixel or playhead floats; storing them raw produces unbounded
+ * mantissas (e.g. 7.219075527362293) in the composition and in Postgres.
+ * Milliseconds are far finer than any frame boundary at normal frame rates,
+ * so this loses nothing real.
+ */
+function roundMs(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+/**
  * The one function preview, canvas and export all call.
  *
  * Contract:
@@ -99,8 +110,9 @@ export function moveElement(edl: EDL, elementId: string, newStart: number): EDL 
   const layerIdx = edl.layers.findIndex((l) => l.elements.some((e) => e.id === elementId));
   if (layerIdx === -1) return edl;
   const layer = edl.layers[layerIdx];
+  const roundedStart = roundMs(newStart);
   const newElements = layer.elements.map((e) =>
-    e.id === elementId ? { ...e, start: newStart } : e,
+    e.id === elementId ? { ...e, start: roundedStart } : e,
   );
   const newLayers = edl.layers.slice();
   newLayers[layerIdx] = { ...layer, elements: newElements };
@@ -128,13 +140,13 @@ export function trimElement(
 
   let updated: BaseElement;
   if (edge === "start") {
-    const newStart = el.start + delta;
-    const newTrimIn = el.trimIn + delta;
-    const newDuration = el.duration - delta;
+    const newStart = roundMs(el.start + delta);
+    const newTrimIn = roundMs(el.trimIn + delta);
+    const newDuration = roundMs(el.duration - delta);
     if (newStart < 0 || newDuration < MIN_DURATION || newTrimIn < 0) return edl;
     updated = { ...el, start: newStart, trimIn: newTrimIn, duration: newDuration };
   } else {
-    const newDuration = el.duration + delta;
+    const newDuration = roundMs(el.duration + delta);
     if (newDuration < MIN_DURATION) return edl;
     updated = { ...el, duration: newDuration };
   }
@@ -158,8 +170,9 @@ export function splitElement(edl: EDL, elementId: string, atTime: number): EDL {
 
   if (atTime <= el.start || atTime >= el.start + el.duration) return edl;
 
-  const firstDuration = atTime - el.start;
-  const secondDuration = el.start + el.duration - atTime;
+  const roundedAtTime = roundMs(atTime);
+  const firstDuration = roundMs(roundedAtTime - el.start);
+  const secondDuration = roundMs(el.start + el.duration - roundedAtTime);
   if (firstDuration < MIN_DURATION || secondDuration < MIN_DURATION) return edl;
 
   let counter = 1;
@@ -174,9 +187,9 @@ export function splitElement(edl: EDL, elementId: string, atTime: number): EDL {
   const second: BaseElement = {
     ...el,
     id: newId,
-    start: atTime,
+    start: roundedAtTime,
     duration: secondDuration,
-    trimIn: el.trimIn + (atTime - el.start),
+    trimIn: roundMs(el.trimIn + (roundedAtTime - el.start)),
     props: { ...el.props },
   };
 

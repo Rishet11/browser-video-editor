@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useEditorStore } from "@/lib/store";
 import type { TimingSuggestion } from "@/lib/suggestions";
 import type { BaseElement } from "@/lib/edl";
+import { formatSeconds } from "@/lib/format";
 
 interface Row extends TimingSuggestion {
   status: "pending" | "applying" | "applied" | "error";
@@ -159,11 +160,12 @@ export default function SuggestionsPanel() {
               <div className="text-xs font-medium">{elementLabel(el)}</div>
               <div className="text-xs text-neutral-400">
                 <span className={startChanged ? "text-yellow-400" : ""}>
-                  start {el?.start ?? "?"} → {row.suggestedStart}
+                  start {el ? formatSeconds(el.start) : "?"} → {formatSeconds(row.suggestedStart)}
                 </span>
                 {"  "}
                 <span className={durationChanged ? "text-yellow-400" : ""}>
-                  duration {el?.duration ?? "?"} → {row.suggestedDuration}
+                  duration {el ? formatSeconds(el.duration) : "?"} →{" "}
+                  {formatSeconds(row.suggestedDuration)}
                 </span>
               </div>
               <div className="text-xs italic text-neutral-500">{row.reason}</div>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useEditorStore } from "@/lib/store";
 import type { BrollSuggestion } from "@/lib/broll";
+import { formatSeconds } from "@/lib/format";
 
 interface Row extends BrollSuggestion {
   key: string;
@@ -85,7 +86,8 @@ export default function BrollPanel() {
             className="flex flex-col gap-1 rounded border border-neutral-800 bg-neutral-950 p-2"
           >
             <div className="text-xs font-medium">
-              gap {row.gapStart}s – {(row.gapStart + row.gapDuration).toFixed(2)}s ({row.shotType})
+              gap {formatSeconds(row.gapStart)}s – {formatSeconds(row.gapStart + row.gapDuration)}s (
+              {row.shotType})
             </div>
             <div className="flex flex-wrap gap-1">
               {row.searchTerms.map((term) => (

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useEditorStore } from "@/lib/store";
 import type { BaseElement } from "@/lib/edl";
+import { formatSeconds } from "@/lib/format";
 
 interface FormState {
   start: string;
@@ -18,9 +19,9 @@ interface FormState {
 
 function toFormState(el: BaseElement): FormState {
   return {
-    start: String(el.start),
-    duration: String(el.duration),
-    trimIn: String(el.trimIn),
+    start: formatSeconds(el.start),
+    duration: formatSeconds(el.duration),
+    trimIn: formatSeconds(el.trimIn),
     x: String(el.props.x ?? ""),
     y: String(el.props.y ?? ""),
     w: String(el.props.w ?? ""),
