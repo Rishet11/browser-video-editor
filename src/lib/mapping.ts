@@ -172,7 +172,7 @@ export async function replaceComposition(
       include: {
         layers: {
           orderBy: { index: "asc" },
-          include: { elements: true },
+          include: { elements: { orderBy: [{ start: "asc" }, { id: "asc" }] } },
         },
       },
     });

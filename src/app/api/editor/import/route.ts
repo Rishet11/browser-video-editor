@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     include: {
       layers: {
         orderBy: { index: "asc" },
-        include: { elements: true },
+        include: { elements: { orderBy: [{ start: "asc" }, { id: "asc" }] } },
       },
     },
   });

@@ -11,7 +11,7 @@ async function loadComposition(id: string) {
     include: {
       layers: {
         orderBy: { index: "asc" },
-        include: { elements: true },
+        include: { elements: { orderBy: [{ start: "asc" }, { id: "asc" }] } },
       },
     },
   });
