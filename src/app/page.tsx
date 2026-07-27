@@ -10,6 +10,7 @@ import Timeline from "@/components/Timeline";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import Toolbar from "@/components/Toolbar";
 import SuggestionsPanel from "@/components/SuggestionsPanel";
+import BrollPanel from "@/components/BrollPanel";
 
 /**
  * The composition the editor opens by default. `prisma/seed.ts` inserts it under
@@ -84,6 +85,7 @@ export default function Home() {
         <div className="flex flex-col w-72 min-h-0 overflow-y-auto border-l border-neutral-700">
           <PropertiesPanel />
           <SuggestionsPanel />
+          <BrollPanel />
         </div>
       </div>
       <Timeline />
