@@ -16,7 +16,16 @@ function elementLabel(el: BaseElement): string {
     const text = el.props.text as string;
     return text.length > 20 ? `${text.slice(0, 20)}…` : text;
   }
-  return `${el.type}:${el.id}`;
+  const src = typeof el.props.src === "string" ? el.props.src : "";
+  const filename = src.split("/").pop() ?? "";
+  if (filename) return filename.replace(/\.[^/.]+$/, "");
+  return el.type === "video" ? "Video clip" : "Image";
+}
+
+function clipClass(type: BaseElement["type"]): string {
+  if (type === "text") return "bg-violet-600/85 hover:bg-violet-500/90";
+  if (type === "image") return "bg-amber-600/85 hover:bg-amber-500/90";
+  return "bg-emerald-600/85 hover:bg-emerald-500/90";
 }
 
 export default function Timeline() {
@@ -210,6 +219,11 @@ export default function Timeline() {
 
   const layers = [...present.layers].sort((a, b) => b.index - a.index);
   const playheadPct = (playhead / present.duration) * 100;
+  const rulerStep = present.duration <= 20 ? 2 : present.duration <= 60 ? 5 : 10;
+  const rulerTicks = Array.from(
+    { length: Math.floor(present.duration / rulerStep) + 1 },
+    (_, index) => index * rulerStep,
+  );
 
   const handleTrackClick = (e: React.MouseEvent) => {
     const t = clientXToSeconds(e.clientX);
@@ -217,7 +231,7 @@ export default function Timeline() {
   };
 
   return (
-    <div className="flex flex-col bg-neutral-900 text-white border-t border-neutral-700 select-none">
+    <section className="flex flex-col bg-neutral-900 text-white border-t border-neutral-700 select-none">
       <div className="flex items-center gap-3 px-3 py-2 border-b border-neutral-700">
         <button
           className="px-2 py-1 text-xs bg-neutral-700 rounded hover:bg-neutral-600"
@@ -228,6 +242,9 @@ export default function Timeline() {
         <span className="text-xs text-neutral-400">
           {playhead.toFixed(2)}s / {present.duration.toFixed(2)}s
         </span>
+        <span className="ml-auto text-[11px] text-neutral-500">
+          Drag to move <span className="px-1">·</span> drag edges to trim <span className="px-1">·</span> S to split
+        </span>
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
       <div
@@ -236,6 +253,16 @@ export default function Timeline() {
         onClick={handleTrackClick}
         style={{ cursor: "text" }}
       >
+        <div className="relative h-6 border-b border-neutral-800 bg-neutral-950/30">
+          {rulerTicks.map((tick) => {
+            const left = (tick / present.duration) * 100;
+            return (
+              <div key={tick} className="absolute top-0 h-full border-l border-neutral-700/80" style={{ left: `${left}%` }}>
+                <span className="ml-1 text-[10px] leading-6 text-neutral-500">{tick}s</span>
+              </div>
+            );
+          })}
+        </div>
         {/* playhead line */}
         <div
           className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none"
@@ -261,8 +288,8 @@ export default function Timeline() {
                     e.stopPropagation();
                     selectElement(el.id);
                   }}
-                  className={`absolute top-1 bottom-1 rounded bg-blue-700/80 hover:bg-blue-600/80 overflow-hidden text-[10px] px-2 flex items-center cursor-grab ${
-                    isSelected ? "ring-2 ring-yellow-400" : ""
+                  className={`absolute top-1 bottom-1 rounded overflow-hidden text-[10px] px-2 flex items-center cursor-grab ${clipClass(el.type)} ${
+                    isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-neutral-900" : ""
                   }`}
                   style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                 >
@@ -283,6 +310,6 @@ export default function Timeline() {
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

@@ -43,6 +43,15 @@ function findElement(
   return null;
 }
 
+function displayName(element: BaseElement): string {
+  if (element.type === "text") {
+    const text = typeof element.props.text === "string" ? element.props.text : "Text";
+    return text.length > 28 ? `${text.slice(0, 28)}…` : text;
+  }
+  const src = typeof element.props.src === "string" ? element.props.src : element.type;
+  return src.split("/").pop() || element.type;
+}
+
 export default function PropertiesPanel() {
   const present = useEditorStore((s) => s.present);
   const selectedElementId = useEditorStore((s) => s.selectedElementId);
@@ -73,8 +82,8 @@ export default function PropertiesPanel() {
 
   if (!element || !form || !selectedElementId) {
     return (
-      <div className="p-4 text-neutral-400 text-sm bg-neutral-900 border-l border-neutral-700 w-64">
-        No element selected
+      <div className="rounded border border-dashed border-neutral-700 bg-neutral-950/40 p-4 text-sm text-neutral-400">
+        Select a clip on the timeline or an element in the preview to edit its properties.
       </div>
     );
   }
@@ -144,14 +153,10 @@ export default function PropertiesPanel() {
   );
 
   return (
-    <div className="p-4 flex flex-col gap-3 bg-neutral-900 border-l border-neutral-700 w-64 text-white">
-      <div>
-        <div className="text-xs text-neutral-500">Type</div>
-        <div className="text-sm">{element.type}</div>
-      </div>
-      <div>
-        <div className="text-xs text-neutral-500">ID</div>
-        <div className="text-sm break-all">{element.id}</div>
+    <div className="flex flex-col gap-3 text-white">
+      <div className="border-b border-neutral-800 pb-3">
+        <div className="text-sm font-medium truncate">{displayName(element)}</div>
+        <div className="mt-1 text-xs capitalize text-neutral-500">{element.type} layer</div>
       </div>
 
       {numberInput("Start", "start", (v) => commitNumberField("start", v))}

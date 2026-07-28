@@ -17,6 +17,7 @@ export default function BrollPanel() {
   const [model, setModel] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   async function handleSuggest() {
     if (!present) return;
@@ -52,17 +53,29 @@ export default function BrollPanel() {
     setRows((rs) => rs.filter((r) => r.key !== key));
   }
 
+  async function handleCopy(key: string, terms: string[]) {
+    try {
+      await navigator.clipboard.writeText(terms.join(", "));
+      setCopiedKey(key);
+    } catch {
+      setError("Could not copy search terms.");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3 rounded border border-neutral-700 bg-neutral-900 p-3 text-sm text-neutral-200">
       <div className="flex items-center justify-between">
-        <span className="font-medium">AI B-roll suggestions</span>
+        <div>
+          <div className="font-medium">B-roll planner</div>
+          <div className="mt-0.5 text-[11px] text-neutral-500">Finds gaps and gives useful search language</div>
+        </div>
         <button
           type="button"
           onClick={handleSuggest}
           disabled={loading || !present}
           className="rounded bg-neutral-700 px-3 py-1 text-xs hover:bg-neutral-600 disabled:opacity-50"
         >
-          {loading ? "thinking…" : "Suggest B-roll"}
+          {loading ? "thinking…" : "Analyze coverage"}
         </button>
       </div>
 
@@ -101,6 +114,13 @@ export default function BrollPanel() {
             </div>
             <div className="text-xs italic text-neutral-500">{row.reason}</div>
             <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleCopy(row.key, row.searchTerms)}
+                className="rounded bg-blue-700 px-2 py-0.5 text-xs hover:bg-blue-600"
+              >
+                {copiedKey === row.key ? "Copied" : "Copy terms"}
+              </button>
               <button
                 type="button"
                 onClick={() => handleDismiss(row.key)}

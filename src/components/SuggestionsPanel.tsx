@@ -121,14 +121,17 @@ export default function SuggestionsPanel() {
   return (
     <div className="flex flex-col gap-3 rounded border border-neutral-700 bg-neutral-900 p-3 text-sm text-neutral-200">
       <div className="flex items-center justify-between">
-        <span className="font-medium">AI timing suggestions</span>
+        <div>
+          <div className="font-medium">Pacing assistant</div>
+          <div className="mt-0.5 text-[11px] text-neutral-500">Suggests timing changes for your review</div>
+        </div>
         <button
           type="button"
           onClick={handleSuggest}
           disabled={loading || !present}
           className="rounded bg-neutral-700 px-3 py-1 text-xs hover:bg-neutral-600 disabled:opacity-50"
         >
-          {loading ? "thinking…" : "Suggest timings"}
+          {loading ? "thinking…" : "Review pacing"}
         </button>
       </div>
 

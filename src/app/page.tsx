@@ -29,6 +29,7 @@ export default function Home() {
   const loadStartedRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [persisted, setPersisted] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"inspector" | "assist">("inspector");
 
   // Autosave only once the composition is known to exist server-side. Saving a
   // local fallback would PUT to an id the database does not have.
@@ -88,11 +89,46 @@ export default function Home() {
           </div>
           <PlaybackControls />
         </div>
-        <div className="flex flex-col w-72 min-h-0 overflow-y-auto border-l border-neutral-700">
-          <PropertiesPanel />
-          <SuggestionsPanel />
-          <BrollPanel />
-        </div>
+        <aside className="flex flex-col w-80 min-h-0 border-l border-neutral-700 bg-neutral-900">
+          <div className="flex border-b border-neutral-700 px-3 pt-3 gap-1">
+            <button
+              type="button"
+              onClick={() => setSidebarTab("inspector")}
+              className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                sidebarTab === "inspector"
+                  ? "border-blue-400 text-white"
+                  : "border-transparent text-neutral-500 hover:text-neutral-200"
+              }`}
+            >
+              Inspector
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarTab("assist")}
+              className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                sidebarTab === "assist"
+                  ? "border-blue-400 text-white"
+                  : "border-transparent text-neutral-500 hover:text-neutral-200"
+              }`}
+            >
+              Assist
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {sidebarTab === "inspector" ? (
+              <PropertiesPanel />
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs leading-5 text-neutral-400">
+                  Use timing help to review pacing, or plan B-roll for uncovered moments.
+                  Suggestions never change the edit until you choose to apply them.
+                </p>
+                <SuggestionsPanel />
+                <BrollPanel />
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
       <Timeline />
     </div>

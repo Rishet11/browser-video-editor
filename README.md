@@ -1,123 +1,82 @@
-# Browser Video Editor
+# MagicRoll Editor
 
-A browser-based video editor: load a composition, preview it on a responsive 16:9
-canvas, edit element timing on a multi-track timeline, persist through a REST API,
-and export a standalone HTML file that plays the composition with no server and no
-build step.
+A browser-based video editor for timed HTML compositions. It previews text, image,
+and video layers in a responsive 16:9 stage, edits them on a timeline, saves the
+composition to Postgres, and exports a playable HTML file.
 
 - **Live app:** https://rishet-video-editor.vercel.app
-- **Repo:** https://github.com/Rishet11/browser-video-editor
-- **Walkthrough:** `TODO_LOOM_URL`
+- **Repository:** https://github.com/Rishet11/browser-video-editor
+- **Loom walkthrough:** `TODO_LOOM_URL`
 
-Everything below is implemented and running at that URL: canvas, playback, the
-timeline with drag/trim/split, the properties panel, all five REST routes,
-Postgres persistence with autosave, standalone HTML export, and one AI feature.
+## What is included
 
-## Quickstart
+- Text, image, and video elements in a responsive 16:9 preview
+- Play, pause, stop, scrubbing, and 0.5x / 1x / 2x playback speeds
+- One timeline track per layer, with drag-to-move and trim handles
+- Split at the playhead, minimum duration validation, and negative-start prevention
+- Inspector for timing, geometry, text, and source properties
+- Autosave, undo/redo, and keyboard shortcuts for split and history
+- Postgres persistence through the requested REST API
+- Standalone HTML export that starts playing when opened
+- HTML import for the brief's ambiguous “load an HTML composition” requirement
+
+## Quick start
 
 ```bash
 git clone https://github.com/Rishet11/browser-video-editor
 cd browser-video-editor
 npm install
-cp .env.example .env            # set DATABASE_URL to any Postgres instance
-npx prisma migrate deploy       # create the schema
-npm run db:seed                 # insert the demo composition
-npm run dev                     # http://localhost:3000
-npm test                        # 129 unit tests: EDL core, export parity, video sync, import, suggestions, B-roll
+cp .env.example .env
+# Set DATABASE_URL in .env
+npx prisma migrate deploy
+npm run db:seed
+npm run dev
 ```
 
-`GROQ_API_KEY` is optional and only powers the AI timing suggestions panel, which
-returns a clear "not configured" state without it. Every other feature works
-regardless. If the database is unreachable the editor falls back to a bundled demo
-composition and says so in a banner, rather than showing an empty canvas.
+Open [http://localhost:3000](http://localhost:3000). `GROQ_API_KEY` is optional;
+without it, the editor works normally and the AI tools show an unavailable state.
 
-### Tests
-
-`npm test` covers the parts where this code can actually be wrong: the visibility
-window at its exact boundaries (inclusive at `start`, exclusive at
-`start + duration`), that a left-edge trim moves `trimIn` and not just `start`, that
-a split's second half inherits the shifted `trimIn`, that rejected transforms return
-the identical input reference, the seek-tolerance comparison, the HTML parser's
-geometry and entity handling, and the suggestion validator's rejection of malformed
-model output.
-
-There is also a test that runs the exported file's vanilla `resolveAt` and the
-TypeScript `resolveAt` over the same EDL at the same timestamps, including both
-window boundaries, and asserts the visible sets match. That test is what keeps the
-"preview and export cannot drift" claim honest rather than aspirational.
-
-I wrote these assertions by hand and chose the cases deliberately. I mention it
-because in my technical interview on 24 July I said I lean on tooling rather than
-writing tests myself, and this is the concrete correction to that.
-
----
+```bash
+npm test       # 156 tests
+npm run build
+```
 
 ## Architecture
 
-The composition is a serialisable JSON document, an **Edit Decision List (EDL)**.
-The editor canvas, the timeline, and the exported standalone HTML file all read it
-through one pure function:
+The composition is a serialisable Edit Decision List (EDL): layers, timed elements,
+and their display properties. The key contract is a pure function:
 
 ```ts
-resolveAt(edl: EDL, t: number): VisibleElement[]
+resolveAt(edl, time): VisibleElement[]
 ```
 
-Given a time `t`, it returns exactly the elements visible at that instant, already
-sorted in paint order, each carrying the `localTime` its renderer needs. It touches
-no DOM, reads no clock, and mutates nothing.
-
-Three consequences, and they are the reason the design is shaped this way:
-
-**1. The preview and the export cannot drift.** The export is not a second
-renderer. It writes the same EDL into a `<script>` tag next to a small vanilla-JS
-copy of the same `resolveAt` and the same animation loop. There is one renderer
-contract, so there is no class of bug where the exported file disagrees with what
-the editor showed.
-
-**2. Undo/redo is nearly free.** Split, trim, and move are pure functions from EDL
-to EDL, so history is a stack of snapshots rather than a set of inverse operations.
-That is about twenty lines in the Zustand store, not a subsystem.
-
-**3. The API is thin.** It persists an EDL and returns an EDL. No server-side
-rendering state, no session, no partial-composition protocol to keep in sync with
-the client.
-
-The playback loop is a single `requestAnimationFrame` tick that advances the
-playhead by `dt * speed`, calls `resolveAt` once per frame, and writes the result
-to the DOM. Speed changes the multiplier, not the tick rate. Scrubbing while paused
-calls `resolveAt` once and starts no loop at all.
-
-The composition itself is just a serialisable JSON EDL. Everything that plays it back, the React canvas, the exported standalone HTML, and the API's own validation, calls the same pure function rather than three separate renderers agreeing by convention.
+It returns the elements visible at a given time, in paint order, along with the
+local time a renderer needs. The browser preview calls it during playback. Export
+embeds the EDL and a small vanilla-JavaScript mirror in the generated file.
 
 ```mermaid
 flowchart LR
-    PG[(Postgres)] -- Prisma --> MAP["toEDL / fromEDL<br/>src/lib/mapping.ts"]
-    MAP -- REST --> Store["Zustand store<br/>pure EDL transforms"]
-    Store --> EDL[/"EDL JSON"/]
-    EDL --> RA["resolveAt(edl, t)<br/>src/lib/edl.ts"]
-    EDL --> RAmirror["resolveAt, vanilla JS mirror<br/>src/lib/exportHtml.ts"]
-    RA -.->|"exportParity.test.ts<br/>asserts identical output"| RAmirror
-    RA --> Canvas["Canvas and Timeline"]
-    RA --> API["API validation"]
-    RAmirror --> Export["Exported standalone HTML"]
+  DB[(Postgres)] --> API[REST API]
+  API --> EDL[EDL in Zustand]
+  EDL --> R[resolveAt(edl, time)]
+  R --> Preview[Editor preview]
+  R --> Timeline[Timeline]
+  EDL --> Export[Standalone HTML export]
 ```
 
-### Rejection is a return value, not an exception
+This keeps the editor small: move, trim, and split are pure EDL transforms, so
+undo/redo is a snapshot stack. A parity test runs the TypeScript and exported
+JavaScript timing implementations against the same composition and timestamps.
 
-Every EDL transform returns the **same object reference** when an edit is invalid:
+### Timing model
 
-```ts
-const next = trimElement(edl, id, "start", delta);
-if (next === edl) { /* rejected */ }
-```
+`start` is a position on the timeline. `trimIn` is an offset inside a source video.
+They are deliberately separate. Trimming a video from the left advances both
+values; otherwise the trimmed clip would restart from the wrong source frame.
 
-This one convention does a lot of work. An invalid drag is a no-op rather than a
-thrown error to catch in an event handler. Rejected edits never enter the undo
-stack, so an illegal drag does not silently consume a Ctrl+Z. And the server
-detects a bad split with the same check the client uses, instead of reimplementing
-the rules.
-
----
+Video playback uses the browser's media clock. The editor only seeks when the
+element drifts more than 0.15 seconds from its expected local time. Seeking every
+frame causes visible stutter.
 
 ## Data model
 
@@ -145,7 +104,7 @@ model Element {
   id       String @id @default(cuid())
   layerId  String
   layer    Layer  @relation(fields: [layerId], references: [id], onDelete: Cascade)
-  type     String // "text" | "image" | "video"
+  type     String
   start    Float
   duration Float
   trimIn   Float  @default(0)
@@ -153,355 +112,59 @@ model Element {
 }
 ```
 
-`Layer.index` is both the z-order and the timeline track's vertical position. One
-track per layer, 1:1, no separate ordering concept.
+`Layer.index` controls both paint order and timeline track order. `props` stores
+geometry and type-specific fields such as text, media source, and CSS. This avoids
+a sparse schema while keeping the persisted composition easy to extend.
 
-### Why `trimIn` is separate from `start`
-
-`start` is where a clip sits on the timeline. `trimIn` is the offset **inside the
-source media** where playback begins. They are different quantities, and collapsing
-them into one field is the bug that makes trimmed video jump.
-
-Dragging a clip's left edge two seconds to the right means "start two seconds later
-into the footage." The timeline position moves, and the source offset has to move
-with it, or the clip snaps back to frame zero of the file and plays the wrong two
-seconds. So a left-edge trim moves `start`, `trimIn`, and `duration` together,
-while a right-edge trim only changes `duration`:
-
-```
-trimElement(edl, id, "start", +2)  ->  start += 2,  trimIn += 2,  duration -= 2
-trimElement(edl, id, "end",   +2)  ->  duration += 2
-```
-
-Splitting has the same requirement: the second half inherits
-`trimIn + (atTime - start)`, otherwise the back half of a cut restarts the video
-from the beginning.
-
-`props` is a JSON column holding `x`, `y`, `w`, `h`, and per-type fields (`text`,
-`src`, `css`). See trade-offs for why that is a JSON blob rather than typed
-columns.
-
----
-
-## API design
+## API
 
 | Method | Route | Purpose |
-|---|---|---|
-| `GET` | `/api/editor/{id}` | Load composition as an EDL |
-| `PUT` | `/api/editor/{id}` | Save whole composition (autosave target) |
-| `PATCH` | `/api/editor/{id}/element/{elementId}` | Update one element |
-| `POST` | `/api/editor/{id}/split` | Split an element at a time |
-| `POST` | `/api/editor/{id}/export` | Render standalone HTML |
+| --- | --- | --- |
+| `GET` | `/api/editor/:id` | Load a composition as an EDL |
+| `PUT` | `/api/editor/:id` | Replace and save a composition; used by autosave |
+| `PATCH` | `/api/editor/:id/element/:elementId` | Update one element |
+| `POST` | `/api/editor/:id/split` | Split an element at a time |
+| `POST` | `/api/editor/:id/export` | Download standalone HTML |
 
-The verb choice is deliberate rather than incidental.
+`PATCH` expresses a small, targeted property update. `PUT` makes autosave
+idempotent. Split is a command that creates a second element, so it is a `POST`.
+Validation is shared between the editor and the server: starts cannot be negative,
+durations cannot be less than 0.5 seconds, and `trimIn` cannot be negative.
 
-**`PATCH` for an element** because it is a partial update to a resource that
-already exists and is addressable. A properties-panel edit changes `duration` and
-nothing else; sending the whole composition to move one field would make the
-request body a lie about the intent.
+## AI assist
 
-**`PUT` for the composition** because autosave needs to be idempotent. The client
-holds the authoritative EDL in memory, debounces, and replaces the stored
-document. Sending the same EDL twice has to be indistinguishable from sending it
-once, which is exactly what `PUT` promises and `PATCH` does not.
+The selected AI bonus is **timing suggestions**. It proposes a start and duration
+for an existing element, explains the suggestion, and lets the editor apply or
+dismiss it one row at a time.
 
-**`POST` for split** because split is not an update to a resource, it is a command
-that **creates** one. One element becomes two, and the second element's id does not
-exist until the server responds. That is not idempotent, and it has no natural
-target URL, so it is a command endpoint rather than a resource update.
+I also included a small **B-roll planner**. It finds uncovered stretches and
+returns a shot type plus copyable stock-footage search terms. It does not invent
+an asset URL or silently insert a clip. Both tools validate model output before it
+reaches the UI, and applied timing changes still pass through the ordinary `PATCH`
+route.
 
-**`POST` for export** for the same reason: it is a computation over the
-composition, not a representation of it.
+## Trade-offs and limitations
 
-Validation lives in `src/lib/validate.ts` and is imported by both the client and
-the route handlers, so the two cannot diverge. A `PATCH` with `duration: 0.2`
-returns 400, not a silent 200. Server-side checks are not there because the client
-is buggy, they are there because the client is not the only possible caller.
+- Export embeds the EDL and runtime, but not media binaries. Exported files need
+  their referenced media URLs to remain available.
+- Video is muted so the exported HTML can autoplay under browser policies.
+- Video source duration is not yet available to server validation, so `trimIn` is
+  not clamped to the end of a source file.
+- The timeline is not virtualised and has no snap-to-grid, zoom, or duplicate.
+- `PUT` replaces a composition's layers and elements in one transaction. This is
+  simple for a demo-scale document, but a larger collaborative editor would diff
+  rows and use per-element conflict resolution.
+- There is no authentication. A composition ID is sufficient to access the demo.
 
----
+## Next steps
 
-## Trade-offs
+For a production workflow, I would generate an EDL from a word-timestamped
+transcript, connect B-roll planning to a licensed asset library, and move final
+video rendering to a queued worker backed by object storage.
 
-**0.15s video seek tolerance.** Video elements are not driven from React state
-every frame. Each tick computes `target = trimIn + (t - start)` per visible video
-and hard-seeks only when `Math.abs(video.currentTime - target) > 0.15`. Below that
-threshold the browser's own clock drives playback.
+## AI tool usage during development
 
-Seeking every frame is the obvious implementation and it stutters badly. Seeks are
-asynchronous and not sample-accurate, and a seek issued every 16ms means the
-decoder never gets to run a smooth sequence. 0.15s is imperceptible at normal
-playback speed but tight enough to correct accumulated drift and to snap
-immediately after a scrub jump, which is the case that actually needs correcting.
-Entering the visible window calls `play()`, leaving it calls `pause()`, and
-`playbackRate` follows the editor's speed setting.
-
-**`props` as a JSON column instead of typed columns.** Text needs `text` and
-`css`; image and video need `src`; all three need geometry. Typed columns would
-mean either a wide sparse table or three joined subtype tables, and every new
-element property would be a migration. The cost is that `props` is not queryable
-in SQL and not type-checked at the database boundary, so it is validated at the
-API edge instead. For a composition editor, where properties are read as a whole
-document and never filtered on, that is the right side of the trade.
-
-**`PUT` replaces layers and elements instead of diffing them.** The transaction
-updates the composition's scalar fields, deletes its layers (elements cascade), and
-recreates them from the incoming EDL. A real diff would produce fewer writes and
-preserve row identity, but it is meaningfully more code and more edge cases for a
-document that is a few kilobytes at demo scale. Named here because it is a
-deliberate simplification, not an oversight, and it is the first thing I would
-change if compositions grew large or if row-level history mattered.
-
-**Split is computed server-side.** The route loads the EDL, calls the same
-`splitElement` the client calls, and persists the result. The client could split
-locally and `PUT` the whole composition, which would be one fewer endpoint. The
-brief asks for the route, and having the server own the operation means a
-non-browser client gets the same validation.
-
-**The export mirror hand-duplicates `resolveAt` in vanilla JS.** `src/lib/exportHtml.ts:73-81` reimplements `resolveAt` from `src/lib/edl.ts` by hand, because the exported file has no bundler and no imports, so it cannot just call the TypeScript function. A copy is a liability: it can drift from the original while everything still compiles and every other test still passes. `src/lib/exportParity.test.ts` is the mitigation, it extracts the vanilla implementation out of the generated document and runs it head-to-head against the real `resolveAt` over the same EDL, including the exact window boundaries. This is the trade-off most likely to bite a future maintainer who edits `resolveAt` without noticing the mirror, and it is why that test exists rather than a comment alone.
-
-**The stale-write check uses `X-If-Unmodified-Since`, not the standard header.**
-This started as `If-Unmodified-Since`, which is exactly the semantic wanted and
-needs no ETag scheme. It worked locally and failed in production. Vercel's CDN
-treats the standard conditional header as its own concern, and returns a
-plain-text `412 PRECONDITION_FAILED` from the edge before the request reaches the
-function at all, so the 409 the client was written to handle never arrived. An
-`x-`-prefixed name is not interpreted by the edge and passes straight through.
-The `Last-Modified` response header is unaffected and stays standard; only the
-conditional request header had to move. I found this by testing the deployment
-rather than localhost, which is the only place the difference exists.
-
----
-
-## An ambiguity in the brief, and how I resolved it
-
-The brief says "load an HTML composition," which admits two readings: load a stored
-composition that renders as DOM, or parse a supplied HTML file into elements. I read
-it as the former, because the specified data model and REST routes both centre on a
-persisted structured composition rather than a file import.
-
-Rather than leave that as a coin flip, the app also accepts a raw HTML file and
-parses it into an EDL, so it behaves correctly under either reading.
-`POST /api/editor/import` takes `text/html` (or `{ html }` JSON), walks the
-`img`/`video`/text-bearing tags, reads `left`/`top`/`width`/`height` off the inline
-styles into `x/y/w/h`, puts the remaining declarations into `props.css`, and
-persists a new composition through the same `fromEDL` path everything else uses.
-`fixtures/sample-composition.html` is a working example.
-
-The parser is deliberately narrow, and the honest caveat is that HTML carries no
-timing information at all. So import has to invent it: each element gets its own
-layer in DOM order (DOM order becomes z-order, which is how HTML already stacks),
-media starts at 0, and text elements are staggered so a demo is not all-at-once.
-That is an assumption, not a derivation, and it is the part I would want to
-replace with a real answer from whoever wrote the spec.
-
----
-
-## Known limitations
-
-Stated plainly, including the ones I would rather not mention.
-
-- **Videos are muted.** Browsers block programmatic `play()` on unmuted media, so
-  every video element is `muted`. Unmuting would mean gating playback behind a user
-  gesture, which the editor's play button could provide but the exported file's
-  autoplay could not.
-- **The timeline is not virtualised.** Fine at demo scale; past a few hundred
-  elements it would need windowing.
-- **Multiple simultaneously decoding videos are not load-tested.** The demo
-  composition has one video visible at a time. Several full-frame videos decoding
-  at once contend for decode bandwidth, and I have not measured where that falls
-  over.
-- **No auth.** A composition id is a capability: anyone with the id can read and
-  overwrite it. There is no per-user ownership. That is acceptable for a
-  single-user demo and would be the first thing to fix for anything real.
-- **Concurrent editing is detected, not resolved.** `PUT` honours
-  `X-If-Unmodified-Since` and returns 409 rather than silently overwriting a newer
-  version, so a second tab is told its copy is stale instead of quietly winning.
-  What does not exist is a merge: the client surfaces the conflict and asks the
-  user to reload, losing that tab's unsaved edits. Real multi-user editing needs
-  per-element operations and a merge strategy, not a whole-composition compare.
-- **`trimIn` is not clamped against the source media's actual duration.** Trimming past the end of a video file silently produces an out-of-range offset rather than an error. The editor has no way to know a video's real duration until the browser loads its metadata, and nothing currently checks the trim against it, client-side or server-side.
-- **`PUT` churns rows.** Delete-then-recreate means row identity is not stable
-  across saves, so anything that later wanted per-row history or foreign keys onto
-  elements would need the diffing version instead.
-- **The AI suggestions are advisory only, and not evaluated.** I check that the
-  model's output is well-formed and in-range, not that its timing advice is good.
-- **Export inlines the EDL but not the media.** Asset URLs are absolutised to the
-  deploying origin, so an exported file plays as long as that origin serves the
-  assets. It is standalone in the sense of needing no server of its own, not in the
-  sense of being a single self-contained file with embedded media.
-- **No snap-to-grid, timeline zoom, or duplicate.** These were the lowest-value
-  items on the bonus list and were cut deliberately in favour of the items above
-  being solid.
-- **Undo/redo is not keyboard-discoverable beyond Ctrl+Z / Ctrl+Shift+Z**, and
-  there is no visible history UI.
-
-### Two bugs worth naming, because they explain the design
-
-Both were found by testing against a real database and a real browser rather than
-by reading the code, which is the argument for doing that early.
-
-**The trim compounded.** `trimElement` shifts the current value by a delta, but the
-drag handler was passing the delta measured from where the drag started, so every
-`pointermove` re-applied the whole offset. A drag through 0.1s, 0.2s, 0.3s applied
-0.6s of trim. The handler now tracks how much it has already committed and passes
-the increment.
-
-**A single drag produced dozens of undo entries.** Every `pointermove` pushed a
-history snapshot, so Ctrl+Z rewound one mouse event rather than one gesture. The
-store now has `beginDrag`/`endDrag` which suspend history pushes for the duration
-of a gesture and record one entry at the end, and record nothing at all if the
-gesture was rejected throughout.
-
----
-
-## Future work
-
-The natural extension of this design is the pipeline that turns raw footage into a
-finished cut automatically, and the EDL is what makes that tractable.
-
-Build this in the order above and not out of it: transcript first, because every later step (keyword extraction, B-roll fetch, rendering) depends on having word-level timings to place things against, and getting that ordering backwards means building steps that have nothing correct to anchor to yet.
-
-Start with a word-timestamped transcript (Whisper or Deepgram) of the uploaded
-video. Word-level timings, not sentence-level, because every downstream step needs
-to place things to a fraction of a second. That transcript generates an EDL
-directly: each caption becomes a text element whose `start` and `duration` come
-from the word timings, on its own layer. At that point the existing editor already
-works, because a generated EDL is the same object a hand-built one is. That is the
-property worth having: the automated pipeline and the manual editor meet at one
-data structure instead of at a rendering routine.
-
-From there, run keyword extraction per transcript segment to decide what each
-segment is about, and use those keywords to fetch B-roll (a stock API like Pexels,
-or generated clips) as video elements on a lower layer, with `trimIn` set to the
-usable part of each asset. Overlays and lower-thirds are the same insert operation
-against the same EDL.
-
-The current editor is not a prototype sitting next to this pipeline, it is the component inside it that owns the EDL and the timing correctness everything downstream relies on.
-
-```mermaid
-flowchart LR
-    A["Uploaded video"] --> B["Word-timestamped transcript<br/>Whisper or Deepgram"]
-    B --> C[/"Generated EDL"/]
-    C --> D["Keyword extraction per segment"]
-    D --> F["B-roll fetch onto a lower layer<br/>stock API or generated clips"]
-    C --> E["This editor<br/>preview, trim, split, undo"]
-    F --> E
-    E --> G["Queued render worker<br/>FFmpeg or Remotion"]
-    G --> H[("Object storage")]
-    H --> I["Signed URL"]
-
-    classDef current fill:#f5c542,stroke:#8a6d00,color:#000,font-weight:bold;
-    class E current;
-```
-
-Rendering a final file is where this stops being a browser problem. Export would
-move to a queued worker rather than a request: enqueue a render job, have a
-headless worker (FFmpeg for straight composition, Remotion if the compositions stay
-React-shaped) resolve the EDL frame by frame using the same timing function, write
-the output to object storage, and hand the client a signed URL. The queue is not
-optional at that point, because a five-minute render cannot live inside an HTTP
-request, and because retries and progress reporting need somewhere to live.
-
-Two things this codebase would need before that: the timeline is not virtualised,
-which is fine at demo scale and would need windowing past a few hundred elements;
-and multiple simultaneously decoding video elements contend for decode bandwidth in
-a browser, which I have not load-tested beyond the demo composition.
-
----
-
-## AI tool usage
-
-I used Claude Code throughout, and the honest split is that it was most useful
-where the work was mechanical and least useful where the work was a design
-decision.
-
-Hand-designed, and where the actual thinking went:
-
-- The EDL abstraction, and the decision that preview and export must share one
-  timing function rather than being two renderers.
-- The `trimIn`/`start` separation and the trim and split semantics that follow
-  from it.
-- Rejection-by-reference-equality as the uniform convention across the transforms,
-  the store, and the API, including the consequence that rejected edits must not
-  enter the undo stack.
-- The 0.15s seek tolerance and the reasoning about why per-frame seeking stutters.
-- The REST verb choices, and why split is a command rather than a resource update.
-- Where the persistence boundary sits, so that `toEDL`/`fromEDL` is the only place
-  the database shape and the EDL shape touch.
-
-Generated with review, because it is pattern-following work: the CRUD route
-handler bodies, the Prisma singleton, Tailwind classes and component scaffolding,
-the vitest boilerplate around assertions I chose, and the initial project scaffold.
-
-The unit tests in `src/lib/edl.test.ts` are worth calling out specifically. The
-assertions are mine, chosen for the cases where this logic actually breaks: the
-boundary at exactly `start + duration` (excluded) versus exactly `start`
-(included), that a left-edge trim moves `trimIn` and not just `start`, that a
-split's second half inherits the shifted `trimIn`, and that a rejected transform
-returns the identical input reference. I checked each of those independently rather
-than trusting a green test run.
-
-### The AI feature runs on Groq, not Claude
-
-The spec asks for at least one AI feature. There are two here, and they solve
-different problems rather than the same problem twice. **Timing suggestions**
-rewrites an existing element's `start` and `duration`. **B-roll suggestions**
-answers a different question: given the content and its timing, where does the
-timeline have a coverage gap, and what footage would fill it.
-
-Both are implemented end to end: prompt, provider call, response validation, and
-graceful degradation when the key is absent. I did not have an Anthropic API key available, so it calls Groq's
-OpenAI-compatible endpoint with `llama-3.3-70b-versatile`. The provider call is one
-function, `callGroq` in `src/lib/ai/groq.ts`, with the base URL, model, and key read
-at the top, so pointing it at Anthropic or OpenAI is a change to that function and
-nothing else. Both features share it, along with three low-level parsing helpers.
-They deliberately do not share a validator. I considered a generic
-`parseStructuredOutput<T>(raw, schema)` and rejected it: the actual guardrails
-differ per feature, an element-id existence check for timing against an
-overlap-against-real-elements check for B-roll, so a shared validator would either
-be too loose to catch either case or would need per-feature callbacks costing more
-code than writing the two separately.
-
-The interesting part is not the call, it is the parsing layer, because a model's
-JSON is untrusted input. `parseSuggestions` accepts either a bare array or
-`{suggestions: [...]}`, strips code fences, coerces numeric strings, and then
-discards any suggestion that names an element id which does not exist, fails
-`isValidStart`/`isValidDuration`, or would run past the end of the composition. It
-reuses the same validators the API uses rather than restating the rules. Malformed
-JSON returns an empty list instead of throwing, and applying a suggestion goes
-through the normal `PATCH` route, so a hallucinated value cannot bypass validation
-on its way into the database. That layer is unit-tested against each of those
-failure shapes.
-
-`parseBrollSuggestions` in `src/lib/broll.ts` applies the same discipline, plus one
-check with no equivalent in timing suggestions: a suggested gap is discarded if it
-actually overlaps an existing element on any layer. A model claiming empty space
-that is not empty is the B-roll analogue of a hallucinated element id, and it is the
-failure mode this feature is most likely to produce.
-
-B-roll suggestions stop at search terms and a shot type. They do not call a
-stock-footage API and do not insert a video element with a fabricated `src`. Doing
-that convincingly would need a real provider integration and a licensing story, and
-a fake one would be worse than the honest boundary. In the pipeline sketched under
-Future work, this is the stage immediately before an asset fetch, and it is the part
-that does not depend on which provider you pick.
-
-I did not evaluate whether the suggestions are *good*. That would need a rubric and
-a held-out set, and it is out of scope here; the claim is only that bad output
-cannot corrupt the composition. `src/lib/suggestions.eval.test.ts` goes one step
-past that claim: it builds a composition with a deliberate overlap and shows both
-that a correct suggestion resolves it and that a syntactically valid, in-range
-suggestion can pass validation and still leave the defect in place. The validator
-checks shape and range, not whether the advice is right, and that test says so in
-executable form rather than in a sentence.
-
----
-
-## A correction from the interview, unrelated to the code
-
-In the technical interview on 24 July I said prompt-cached tokens are stored
-locally. That was wrong. The KV cache is held server-side by the provider under a TTL, which is why
-the discount only applies inside that window, and why prefix stability matters so
-much: a change near the beginning of a prompt invalidates the cached prefix and the
-rest is recomputed at full price. I looked it up afterwards and would rather
-correct it than leave it standing.
+I used Claude Code for scaffolding, repetitive route/component boilerplate, and
+reviewing implementation options. I made the EDL model, timing rules, API shapes,
+validation behaviour, and test cases myself, then used the tool to help implement
+and iterate on them.
