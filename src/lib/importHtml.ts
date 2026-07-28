@@ -1,48 +1,27 @@
-/**
- * HTML-composition importer.
- *
- * Satisfies the second reading of "load an HTML composition": parsing a
- * supplied HTML file into an EDL, as opposed to loading a stored composition
- * that already renders as DOM (GET /api/editor/{id}, which the app already
- * supports). Deliberately narrow scope: hand-rolled regex parsing, no DOM
- * library, trusted-ish input.
- *
- * Parsing rules:
- * - `<script>` and `<style>` blocks are stripped before scanning, so their
- *   contents never become text elements.
- * - Recognised tags: `<img>`, `<video>` (src attr or nested `<source src>`),
- *   and text-bearing block tags `<div> <p> <h1>-<h6> <span>`. Everything else
- *   is ignored (including comments, `<head>`, etc. — we never scan into
- *   `<head>` contents because we only look for the tags above).
- * - A text-bearing tag only becomes a text element if it has non-empty DIRECT
- *   text content (not just nested-tag text). A `<div>` used purely as a
- *   container (no direct text) emits no element.
- * - Text is HTML-entity-decoded (&amp; &lt; &gt; &quot; &#39; &nbsp; plus
- *   numeric entities) and whitespace-collapsed.
- * - Geometry: `left/top/width/height` from the inline `style` attribute map to
- *   `props.x/y/w/h`. Accepts `px`, bare numbers, and `%` (resolved against the
- *   composition width/height). Missing values fall back to sane defaults
- *   (0,0 and a fraction of composition size) rather than NaN/undefined.
- * - Any other inline style declarations (color, font-size, font-weight,
- *   background, opacity, text-align, ...) are camelCased into `props.css` as
- *   a plain object, e.g. `font-size: 72px` -> `{ fontSize: "72px" }`.
- *   `left/top/width/height` are excluded from `css` since they already became
- *   x/y/w/h and duplicating them would let css override positioning.
- *
- * Timing scheme (HTML carries no timing information, so this is an explicit
- * assumption): every top-level recognised element gets its OWN layer, in DOM
- * order (DOM order -> layer index -> z-order, matching how HTML naturally
- * stacks later elements on top). Non-text elements (image/video) all start at
- * t=0 for `defaultDuration` seconds, so the demo composition shows the full
- * scene by default. Text elements are staggered by DOM order among the text
- * elements only: the i-th text element (0-indexed, in DOM order) starts at
- * `i * defaultDuration`, so a demo composition is not one giant pile of
- * overlapping captions. `edl.duration` is the max element end time across all
- * elements. `trimIn` is always 0 (HTML expresses no source offset).
- *
- * Pure function: no DB access, no Date.now(), no Math.random() — ids are
- * generated with counters so output is deterministic and testable.
- */
+// HTML-composition importer: the second reading of "load an HTML composition"
+// (parse a supplied file, vs loading a stored one — GET /api/editor/{id} covers
+// that). Deliberately narrow: hand-rolled regex, no DOM lib, trusted-ish input.
+//
+// Rules:
+// - <script>/<style> stripped before scanning.
+// - Recognised tags: <img>, <video> (src attr or nested <source>), and
+//   text-bearing <div> <p> <h1>-<h6> <span>. Everything else ignored.
+// - A text tag becomes an element only on non-empty DIRECT text; a pure
+//   container is recursed into instead.
+// - Text is entity-decoded and whitespace-collapsed.
+// - left/top/width/height from inline style -> x/y/w/h (px, bare numbers, %
+//   of composition size; missing -> sane defaults). Other declarations go
+//   into props.css camelCased; the four geometry props are excluded so css
+//   can't override positioning.
+//
+// Timing: HTML carries none, so it's invented. Each element gets its own
+// layer in DOM order (DOM order -> z-order, as HTML stacks). Media starts at
+// 0 for defaultDuration; the i-th text element starts at i * defaultDuration
+// so a demo isn't one pile of captions. edl.duration = max element end.
+// trimIn is always 0.
+//
+// Pure: counter-generated ids, no Date.now/Math.random — deterministic and
+// testable.
 
 import type { EDL, Layer, BaseElement, ElementType } from "./edl";
 import { isValidStart, isValidDuration } from "./validate";
@@ -194,17 +173,12 @@ export function parseHtmlToEDL(html: string, options?: ImportOptions): EDL {
     "gi",
   );
 
-  // Recursive: a container text-bearing tag (no direct text of its own) is
-  // not emitted as an element, but its body is scanned for nested elements
-  // (img/video/text) so nesting doesn't hide content. A tag WITH direct text
-  // is emitted and its body is not re-scanned (its own text already captured
-  // the content; avoids double-counting).
-  /**
-   * Depth cap on container recursion. The nesting depth of the input is
-   * attacker-controlled (this parser is reachable from POST /api/editor/import),
-   * so without a bound a payload of deeply nested empty <div>s overflows the
-   * stack and takes down the request. Real compositions nest nowhere near this.
-   */
+  // Recursion: a container tag with no direct text of its own emits nothing,
+  // but its body is scanned for nested elements. A tag WITH direct text is
+  // emitted and its body is not re-scanned (avoids double-counting).
+  // Depth is capped: nesting depth is attacker-controlled (this parser is
+  // reachable from POST /api/editor/import), and unbounded nested divs would
+  // overflow the stack. Real compositions nest nowhere near 32.
   const MAX_DEPTH = 32;
 
   function scan(source: string, depth = 0): ParsedElement[] {
@@ -259,10 +233,9 @@ export function parseHtmlToEDL(html: string, options?: ImportOptions): EDL {
         // text-bearing tag
         const attrs = parseAttrs(match[6]);
         const body = match[7] ?? "";
-        // Direct text = body content with any nested tags (and their
-        // contents) removed. If what remains, once decoded/collapsed, is
-        // non-empty, this tag is a text element; otherwise it's a pure
-        // container and we recurse into its body instead.
+        // Direct text = body with nested tags (and their contents) removed.
+        // Non-empty after decoding => text element; empty => pure container,
+        // so recurse into the body instead.
         const withoutNested = body.replace(/<[^>]+>[\s\S]*?<\/[^>]+>|<[^>]+\/?>/g, "");
         const directText = collapseWhitespace(decodeEntities(withoutNested));
         if (!directText) {

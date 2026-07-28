@@ -37,15 +37,9 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
     return () => observer.disconnect();
   }, []);
 
-  /**
-   * Fit to whichever dimension runs out first.
-   *
-   * Scaling from width alone is the obvious version and it is wrong: on a wide
-   * window the derived height exceeds the space available and the canvas pushes
-   * the timeline off the bottom of the screen. Taking the smaller of the two
-   * ratios letterboxes instead, which is what "scale to fit, preserve aspect
-   * ratio" actually asks for.
-   */
+  // Scale to fit: take the smaller ratio to prevent overflow. Width alone is
+  // wrong — it pushes the timeline off-screen on wide windows. Smaller of the two
+  // ratios letterboxes correctly.
   const scale =
     box.width > 0 && box.height > 0
       ? Math.min(box.width / edl.width, box.height / edl.height)
@@ -55,30 +49,18 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
   const visible = resolveAt(edl, playhead);
   const visibleIds = new Set(visible.map((el) => el.id));
 
-  // All video elements in the composition, mounted for the entire session.
-  // resolveAt decides *visibility* per frame (via `visibleIds`), but it must
-  // never decide *mounting*: unmounting a <video> and remounting it later
-  // reloads the media element and restarts playback from zero. So every
-  // video element gets one stable DOM node here, hidden with opacity when
-  // resolveAt says it isn't in the current frame's visible window, and the
-  // rAF sync loop (usePlayback) seeks/plays/pauses whichever ones are
-  // registered and currently visible.
+  // Videos mount once and stay mounted — resolveAt controls visibility only.
+  // Unmounting/remounting causes reload and playback restarts. Each video gets
+  // one stable DOM node, hidden with opacity when out of the visible window.
+  // usePlayback syncs playback on the registered visible ones.
   const allVideoElements = useMemo(
     () => edl.layers.flatMap((l) => l.elements).filter((el) => el.type === "video"),
     [edl],
   );
 
-  /**
-   * Explicit paint order per element id.
-   *
-   * `resolveAt` returns elements already sorted by layer index, and for a single
-   * mapped list DOM order alone would be enough. It is not enough here: videos
-   * are mounted persistently in a second pass after the per-frame children, so
-   * DOM order would always paint them last and a caption on a higher layer would
-   * disappear behind a full-frame video. Deriving `zIndex` from the layer index
-   * keeps the EDL the single authority on stacking, which is what the data model
-   * claims ("Layer.index is both z-order and track position").
-   */
+  // Explicit z-index per element. resolveAt sorts by layer, but videos mount
+  // in a separate pass below, so DOM order alone would paint them last and bury
+  // captions on higher layers. zIndex keeps the EDL as the stacking authority.
   const zIndexById = useMemo(() => {
     const map = new Map<string, number>();
     const ordered = [...edl.layers].sort((a, b) => a.index - b.index);
@@ -104,7 +86,7 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
         background: "black",
       }}
     >
-      {/* The 16:9 frame itself, sized to the fitted scale so it never overflows. */}
+      {/* The 16:9 canvas, scaled to fit. */}
       <div
         id="stage"
         style={{
@@ -186,8 +168,7 @@ export default function Stage({ edl, playhead, onSelectElement }: StageProps) {
             );
           }
 
-          // Video elements are rendered persistently below, outside this
-          // per-frame map, so they stay mounted for the whole session.
+          // Videos render persistently in a separate pass below; skip them here.
           return null;
         })}
 

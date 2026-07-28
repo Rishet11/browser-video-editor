@@ -4,36 +4,26 @@ import { useEffect, useRef } from "react";
 import { useEditorStore } from "@/lib/store";
 import type { EDL } from "@/lib/edl";
 
-/** Debounce window before an edit is persisted, in ms. */
+// Debounce before persisting edits (ms).
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
-/**
- * Persists the EDL after edits settle.
- *
- * The client holds the authoritative document and `PUT` replaces it wholesale,
- * which is why autosave can be a debounce rather than a change log: sending the
- * same EDL twice is indistinguishable from sending it once.
- *
- * Two things this deliberately avoids:
- * - Saving the EDL that was just loaded. The first `present` a session sees came
- *   from the server, so writing it straight back would be a pointless round trip
- *   on every page load. `lastSavedRef` is primed with it instead.
- * - Saving mid-drag. Every pointermove produces a new EDL, so an undebounced
- *   save would issue a request per mouse event.
- */
+// Autosave fires on edit settle (debounced) since PUT replaces the whole EDL.
+// Skips two things: the EDL loaded from server (lastSavedRef starts with it
+// so we don't bounce it back), and mid-drag saves (every pointermove would be
+// a request without debounce).
 export function useAutosave(enabled: boolean) {
   const present = useEditorStore((s) => s.present);
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus);
   const lastModified = useEditorStore((s) => s.lastModified);
   const setLastModified = useEditorStore((s) => s.setLastModified);
   const lastSavedRef = useRef<EDL | null>(null);
-  /** Read inside the debounced callback so the PUT sends the freshest value. */
+  // Read inside the debounce callback so PUT gets the latest value.
   const lastModifiedRef = useRef<string | null>(lastModified);
   useEffect(() => {
     lastModifiedRef.current = lastModified;
   }, [lastModified]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Aborts a save that is still in flight when a newer edit supersedes it. */
+  // Abort mid-flight saves when a newer edit lands.
   const inFlightRef = useRef<AbortController | null>(null);
 
   useEffect(() => {

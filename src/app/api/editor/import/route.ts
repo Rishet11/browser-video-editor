@@ -1,12 +1,5 @@
-/**
- * POST /api/editor/import
- *
- * The assignment brief's "load an HTML composition" is ambiguous: it could
- * mean loading a stored composition that renders as DOM (already covered by
- * GET /api/editor/{id}), or parsing a supplied HTML file into elements. This
- * route exists to satisfy the second reading: it parses raw HTML into an EDL
- * and persists it as a brand-new composition.
- */
+// Parse raw HTML into an EDL and persist as a new composition.
+// (Distinguishes from GET /api/editor/{id}, which retrieves stored HTML.)
 import { prisma } from "@/lib/prisma";
 import { toEDL, fromEDL } from "@/lib/mapping";
 import { parseHtmlToEDL } from "@/lib/importHtml";
@@ -51,12 +44,9 @@ export async function POST(req: Request) {
       duration: payload.duration,
       width: payload.width,
       height: payload.height,
-      // Layer and element ids are deliberately NOT carried over from the parse.
-      // `parseHtmlToEDL` numbers them deterministically (import-l0, import-e0…)
-      // so it stays unit-testable, but those are primary keys here: persisting
-      // them verbatim means importing the same document twice collides on a
-      // unique constraint and 500s. Letting Prisma's @default(cuid()) assign
-      // them keeps every import independent.
+      // Skip IDs from the parse. parseHtmlToEDL uses deterministic names for testing,
+      // but they're PKs here—re-importing the same doc would collide. Let Prisma
+      // generate new ones (@default(cuid())) so each import stays independent.
       layers: {
         create: payload.layers.map((layer) => ({
           name: layer.name,

@@ -1,9 +1,6 @@
-/**
- * Shared Groq provider layer for AI features (timing suggestions, B-roll).
- * One HTTP call to Groq's OpenAI-compatible chat completions endpoint.
- * Swapping providers (Anthropic /v1/messages, OpenAI /v1/chat/completions)
- * is a drop-in replacement for the body of this function.
- */
+// Shared Groq provider layer for the AI features. One HTTP call to Groq's
+// OpenAI-compatible chat endpoint; swapping providers (Anthropic, OpenAI) is
+// a drop-in replacement for this function's body.
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 

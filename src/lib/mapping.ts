@@ -1,8 +1,5 @@
-/**
- * The ONLY place DB shape and EDL shape touch. Route handlers must go through
- * `toEDL` / `fromEDL` (and `replaceComposition` for the shared persistence
- * path) rather than reading/writing Prisma models directly.
- */
+// The ONLY place DB shape and EDL shape touch. Route handlers go through
+// toEDL/fromEDL (and replaceComposition for writes), never Prisma directly.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { EDL, BaseElement, ElementType } from "./edl";
 
@@ -39,12 +36,8 @@ function coerceProps(value: Prisma.JsonValue): Record<string, unknown> {
   return {};
 }
 
-/**
- * Merges a partial props patch over an element's existing props for PATCH.
- * Deliberately shallow: `css` (and any other nested object) is replaced
- * wholesale rather than deep-merged, since deep merging would make it
- * impossible for a caller to remove a key from `css`.
- */
+// Shallow on purpose: nested objects like `css` are replaced wholesale —
+// a deep merge would leave a caller no way to remove a key from `css`.
 export function mergeProps(
   existing: Record<string, unknown> | null | undefined,
   incoming: Record<string, unknown>,
@@ -102,25 +95,18 @@ export function fromEDL(edl: EDL) {
   };
 }
 
-/**
- * Shared persistence path for PUT and split: delete-then-recreate all layers
- * (cascade removes elements) inside one transaction, then re-read via toEDL
- * so the response is authoritative rather than an echo of the input.
- *
- * Delete-then-recreate is a deliberate simplicity trade-off over diffing;
- * it is idempotent and correct for our scale, at the cost of churning ids
- * for rows that would otherwise be unchanged (ids are preserved from the
- * incoming EDL, so this is a non-issue for callers that already have one).
- *
- * The writes are two `createMany` calls rather than one nested `create` per
- * layer, which keeps the transaction at a FIXED five round trips no matter how
- * many layers or elements the composition has. That is not a micro-optimisation:
- * a per-row loop against a managed Postgres over the network accumulates one
- * network round trip per row, and Prisma's interactive transactions time out at
- * 5s, so the loop version failed with P2028 on a remote database while passing
- * against a local one. `createMany` needs no returned rows here, since the
- * authoritative EDL is re-read at the end anyway.
- */
+// Shared write path for PUT and split: delete-then-recreate all layers
+// (elements cascade) in one transaction, then re-read via toEDL so the
+// response is authoritative rather than an echo of the input.
+//
+// Delete-then-recreate over diffing on purpose: idempotent and fine at this
+// scale, at the cost of churning rows. Ids come from the incoming EDL anyway.
+//
+// Two createMany calls, not a nested create per layer, so the transaction is
+// a FIXED five round trips regardless of size. A per-row loop over the network
+// accumulates a round trip per row and blew Prisma's 5s interactive-transaction
+// limit (P2028) against remote Postgres while passing locally. createMany needs
+// no returned rows — the authoritative EDL is re-read at the end anyway.
 export async function replaceComposition(
   prisma: PrismaClient,
   id: string,

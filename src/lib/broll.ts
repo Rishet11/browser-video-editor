@@ -1,20 +1,16 @@
-/**
- * AI B-roll suggestions: find coverage opportunities in the composition (dead air,
- * text-only stretches with no visual, long unbroken shots) and propose
- * stock-footage search terms for them. Keyword-only: this feature never
- * proposes an element to insert, only search terms for a human to source
- * real footage with.
- *
- * Deliberately non-overlapping with timing suggestions: this prompt tells
- * the model not to touch existing element timing, so the two AI features
- * can never propose conflicting edits.
- */
+// AI B-roll suggestions: find coverage opportunities (dead air, text-only
+// stretches, long unbroken shots) and propose stock-footage search terms for
+// them. Keywords only — never proposes an element to insert, just search
+// terms for a human to source real footage with.
+//
+// Non-overlapping with timing suggestions on purpose: this prompt forbids
+// touching existing timing, so the two AI features can't propose conflicts.
 import type { EDL, BaseElement } from "./edl";
 import { isValidStart, isValidDuration } from "./validate";
 import { stripFence, toFiniteNumber, round2 } from "./ai/groq";
 
 export interface BrollSuggestion {
-  afterElementId: string; // a real element id, or "__start__" meaning before the first element
+  afterElementId: string; // a real element id, or "__start__" = before the first element
   gapStart: number;
   gapDuration: number;
   searchTerms: string[]; // 1-5 short phrases
@@ -60,7 +56,7 @@ Respond with ONLY a JSON object of this exact shape, no other text:
 "afterElementId" is the id of the element immediately before the gap, or "__start__" if the gap is before the first element. Each "reason" must reference the specific gap (e.g. "5s of dead air before the intro title" or "8s unbroken interview shot wants a cutaway"). Do not use generic filler like "improves pacing".`;
 }
 
-/** Parses and VALIDATES a model response into B-roll suggestions, discarding bad entries. */
+/** Parses and validates a model response, discarding bad entries. */
 export function parseBrollSuggestions(raw: string, edl: EDL): BrollSuggestion[] {
   let parsed: unknown;
   try {

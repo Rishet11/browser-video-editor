@@ -8,20 +8,13 @@ import {
   splitElement as splitEl,
 } from "./edl";
 
-/**
- * FROZEN CONTRACT. State field names, action names and argument order are
- * depended on by the canvas, the timeline, the properties panel and the AI
- * suggestions panel. Do not rename or reorder.
- *
- * Undo/redo is a snapshot stack over the immutable EDL: every mutating action
- * pushes the current `present` onto `past` before applying, and clears
- * `future`. This is cheap precisely because the EDL transforms are pure.
- *
- * Rejected edits (the pure transform returned the same reference) are NOT
- * pushed onto `past` — an invalid drag must not consume an undo step. Each
- * mutating action returns `true` if applied, `false` if rejected, so callers
- * can surface an error without re-deriving the validation rules.
- */
+// FROZEN CONTRACT: field and action names are depended on by the canvas,
+// timeline, properties panel and suggestions panel. Don't rename or reorder.
+//
+// Undo/redo is a snapshot stack over the immutable EDL — cheap because the
+// transforms are pure. Rejected edits (transform returned the same reference)
+// are NOT pushed onto `past`: an invalid drag must not eat an undo step. Each
+// action returns true/false so the UI can surface the rejection.
 export interface EditorState {
   present: EDL | null;
   past: EDL[];
@@ -32,19 +25,13 @@ export interface EditorState {
   speed: number;
   /** Autosave indicator: null before the first save attempt. */
   saveStatus: "saving" | "saved" | "error" | "conflict" | null;
-  /**
-   * Last-Modified value observed from the server (initial GET, or echoed back
-   * by a successful PUT). Threaded into autosave's If-Unmodified-Since header
-   * so it can detect a concurrent edit. Stored here (rather than a ref local
-   * to one hook) because both the loading component and useAutosave need it,
-   * and it's already the shared source of truth for server-loaded state.
-   */
+  // Last-Modified from the server (initial GET or a successful PUT), sent back
+  // as If-Unmodified-Since so autosave can detect a concurrent edit. In the
+  // store because both the loader and useAutosave need it.
   lastModified: string | null;
-  /**
-   * Set while a pointer drag is in flight. A drag applies many transforms (one
-   * per pointermove) but must be ONE undo step, so history pushes are suspended
-   * between beginDrag and endDrag.
-   */
+  // Set while a pointer drag is in flight. A drag applies many transforms (one
+  // per pointermove) but must be ONE undo step, so history pushes are suspended
+  // between beginDrag and endDrag.
   dragging: boolean;
 
   load: (edl: EDL) => void;
@@ -63,12 +50,9 @@ export interface EditorState {
     patch: Partial<Pick<BaseElement, "start" | "duration" | "trimIn" | "props">>,
   ) => boolean;
 
-  /**
-   * Coalesce a pointer drag into a single undo step. `beginDrag` remembers the
-   * pre-drag EDL without pushing it; `endDrag` pushes that baseline only if the
-   * drag actually changed something, so a drag that was rejected end-to-end
-   * leaves no empty entry in the history.
-   */
+  // beginDrag remembers the pre-drag EDL without pushing it; endDrag pushes
+  // that baseline only if the drag actually changed something, so a fully
+  // rejected drag leaves no empty history entry.
   beginDrag: () => void;
   endDrag: () => void;
 
@@ -85,13 +69,13 @@ function applyTransform(
   if (!present) return null;
   const next = transform(present);
   if (next === present) return null; // rejected by the transform
-  // Mid-drag: apply the edit but suspend the history push. endDrag() records
+  // Mid-drag: apply the edit but suspend the history push; endDrag records
   // the whole drag as one entry.
   if (state.dragging) return { present: next };
   return { present: next, past: [...state.past, present], future: [] };
 }
 
-/** Pre-drag EDL, held outside the store so it never triggers a re-render. */
+/** Pre-drag EDL, kept outside the store so it never triggers a re-render. */
 let dragBaseline: EDL | null = null;
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -107,9 +91,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   dragging: false,
 
   load: (edl) => {
-    // Drop any in-flight drag baseline: it belongs to the composition being
-    // replaced, and pushing it onto the new composition's history would let an
-    // undo restore a different composition's data.
+    // Drop any drag baseline: it belongs to the composition being replaced,
+    // and pushing it here would let undo restore another composition's data.
     dragBaseline = null;
     set({ present: edl, past: [], future: [], playhead: 0, dragging: false });
   },
@@ -143,10 +126,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   patchElement: (elementId, patch) => {
     // Validate here, not just in the route. Every other mutator inherits its
-    // rules from the pure transforms in edl.ts, but this one writes fields
-    // directly, so without this check the properties panel could set a negative
-    // trimIn or a sub-minimum duration, autosave would PUT it, and the
-    // composition would be persisted in a state the transforms consider illegal.
+    // rules from the pure transforms, but this one writes fields directly —
+    // without the check the properties panel could persist a negative trimIn
+    // or sub-minimum duration that the transforms consider illegal.
     if (patch.start !== undefined && !isValidStart(patch.start)) return false;
     if (patch.duration !== undefined && !isValidDuration(patch.duration)) return false;
     if (
@@ -183,8 +165,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { present, past } = get();
     const baseline = dragBaseline;
     dragBaseline = null;
-    // Only record history if the drag changed something. A drag that was
-    // rejected throughout leaves the history untouched.
+    // Record history only if the drag changed something; a fully rejected
+    // drag leaves it untouched.
     if (baseline && present && baseline !== present) {
       set({ dragging: false, past: [...past, baseline], future: [] });
     } else {

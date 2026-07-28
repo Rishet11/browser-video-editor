@@ -1,7 +1,5 @@
-/**
- * Shared validation helpers. Dependency-free (no Prisma, no next/server) so
- * client and server can import from the same source and never diverge.
- */
+// Shared validation. Dependency-free so client and server import the same
+// source and can't diverge.
 import { MIN_DURATION } from "./edl";
 
 export function isValidStart(start: number): boolean {

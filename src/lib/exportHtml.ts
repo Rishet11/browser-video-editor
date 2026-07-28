@@ -1,11 +1,8 @@
 import type { EDL } from "./edl";
 
-/**
- * Safely serialize a value for embedding inside an inline <script> tag.
- * JSON.stringify output can contain `</script`, which would close the tag
- * early if placed raw in HTML (a real injection vector since element props
- * hold user-editable text and src strings).
- */
+// Serialize a value for an inline <script> tag. JSON.stringify can emit
+// `</script`, which would close the tag early — a real injection vector since
+// props hold user-editable text and src strings.
 export function serializeForScript(value: unknown): string {
   return JSON.stringify(value)
     .replace(/</g, "\\u003C")
@@ -15,12 +12,10 @@ export function serializeForScript(value: unknown): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-/**
- * Renders a standalone HTML document that plays back the given EDL without
- * any bundler or server. The vanilla-JS block below mirrors the timing
- * contract in src/lib/edl.ts (resolveAt) and src/lib/videoSync.ts exactly,
- * so the exported file and the live editor preview are the same renderer.
- */
+// Renders a standalone HTML document that plays the EDL with no bundler or
+// server. The vanilla-JS block mirrors resolveAt (lib/edl.ts) and the sync
+// rules (lib/videoSync.ts) exactly, so the exported file and the live preview
+// are the same renderer.
 export function renderStandaloneHtml(edl: EDL): string {
   const edlJson = serializeForScript(edl);
   const title = escapeHtml(edl.name || "Composition");
@@ -112,10 +107,9 @@ const EDL = ${edlJson};
   var inner = document.getElementById("inner");
   var playBtn = document.getElementById("play-btn");
 
-  // Paint order comes from the layer index, not from DOM insertion order, so it
-  // matches Stage.tsx exactly. The editor needs the explicit z-index because it
-  // mounts videos in a separate pass; mirroring it here keeps the two renderers
-  // from diverging if either one's build order ever changes.
+  // Paint order comes from the layer index, not DOM insertion order, matching
+  // Stage.tsx. Mirroring it here keeps the two renderers from diverging if
+  // either one's build order ever changes.
   var allElements = [];
   var orderedLayers = EDL.layers.slice().sort(function (a, b) { return a.index - b.index; });
   orderedLayers.forEach(function (layer, layerOrder) {
@@ -176,9 +170,9 @@ const EDL = ${edlJson};
       video.style.objectFit = "cover";
       root.appendChild(video);
       entry.video = video;
-      // Video nodes persist for the whole session; visibility is toggled
-      // via style, never by removing/recreating the node, since remounting
-      // a <video> reloads the media and restarts it from zero.
+      // Video nodes persist for the session; visibility is toggled via style,
+      // never by recreating the node — remounting a <video> reloads the media
+      // and restarts it from zero.
       root.style.opacity = "0";
       root.style.visibility = "hidden";
     }

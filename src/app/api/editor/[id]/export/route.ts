@@ -5,16 +5,9 @@ import type { EDL } from "@/lib/edl";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Rewrite root-relative asset paths to absolute URLs against this deployment's
- * origin.
- *
- * The exported file is meant to be opened directly from disk. Under `file://`
- * a `src` of `/demo/clip.mp4` resolves to the filesystem root and the asset
- * silently fails to load, so the export would look broken through no fault of
- * the renderer. Absolutising at export time is the only place that knows the
- * origin the file was produced from.
- */
+// Convert root-relative asset paths to absolute URLs.
+// Exported HTML opens via file:// where /demo/clip.mp4 would resolve to the
+// filesystem root and silently fail. Only we know the deployment origin.
 function absolutiseAssets(edl: EDL, origin: string): EDL {
   const fix = (value: unknown) =>
     typeof value === "string" && value.startsWith("/") && !value.startsWith("//")

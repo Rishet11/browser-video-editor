@@ -1,18 +1,14 @@
 import { type EDL, type BaseElement } from "./edl";
 
-/**
- * Request-body parsing for the route handlers.
- *
- * `await req.json() as EDL` is a lie the type system happily accepts: the cast
- * asserts a shape nobody checked. A body of `{}` then fails deep inside the
- * handler on `body.layers` being undefined, which surfaces to the caller as a
- * 500. A malformed request is the client's mistake and should read as 400, so
- * the shape is checked once, here, before any handler logic runs.
- *
- * These are hand-written guards rather than a schema library because the shapes
- * are small and fixed, and adding a dependency for four of them is not worth it.
- * If the API grew, this is the file that would become a zod schema.
- */
+// Request-body parsing for the route handlers.
+//
+// `await req.json() as EDL` asserts a shape nobody checked: a body of `{}`
+// then fails deep in the handler on `body.layers` being undefined, surfacing
+// as a 500. A malformed request is the client's mistake and should be a 400,
+// so the shape is checked once, here.
+//
+// Hand-written guards, not a schema library: four small fixed shapes, not
+// worth a dependency. If the API grows, this file becomes a zod schema.
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -24,7 +20,7 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
-/** Reads and JSON-parses a body, turning a syntax error into a message. */
+/** Reads and JSON-parses a body; a syntax error becomes a 400-able message. */
 export async function readJson(req: Request): Promise<ParseResult<unknown>> {
   try {
     return { ok: true, value: await req.json() };

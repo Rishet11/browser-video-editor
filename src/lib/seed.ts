@@ -1,10 +1,7 @@
 import type { EDL } from "./edl";
 
-/**
- * Demo composition: 15s, 1920x1080, 3 layers, 5 elements.
- * Visible set at t=0 differs from t=8. Includes one video with non-zero
- * trimIn to demonstrate the trim/split story.
- */
+// Demo composition: 15s, 3 layers, 5 elements. Visible set at t=0 differs
+// from t=8. One video with non-zero trimIn to show the trim/split story.
 export const SEED_EDL: EDL = {
   id: "seed-edl",
   name: "Demo Composition",
@@ -37,9 +34,9 @@ export const SEED_EDL: EDL = {
           layerId: "layer-1",
           type: "video",
           start: 7,
-          // `/demo/clip.mp4` is 10s long, so trimIn + duration must stay inside
-          // that or the element seeks past the end of the source and shows a
-          // frozen last frame. Source range used here is 2s..8s.
+          // /demo/clip.mp4 is 10s, so trimIn + duration must stay inside that
+          // or the element seeks past the end and freezes on the last frame.
+          // Source range used here: 2s..8s.
           duration: 6,
           trimIn: 2,
           props: {

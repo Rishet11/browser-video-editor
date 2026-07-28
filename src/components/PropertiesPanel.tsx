@@ -62,14 +62,10 @@ export default function PropertiesPanel() {
   const [form, setForm] = useState<FormState | null>(element ? toFormState(element) : null);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * The inputs are local state so typing does not fight the store on every
-   * keystroke, but they must resync when the selection changes or when the
-   * element is edited from elsewhere (a timeline drag, an undo, an applied AI
-   * suggestion). Comparing a signature during render is React's recommended way
-   * to do that: an effect calling setState would schedule a second render pass
-   * for every store change.
-   */
+  // Form inputs are local state so typing doesn't fight the store on every keystroke.
+  // They resync when the selection or element changes (drag, undo, AI suggestion) by
+  // checking a signature during render. Faster than using an effect to setState,
+  // which would schedule a second render per store change.
   const signature = element
     ? `${element.id}|${element.start}|${element.duration}|${element.trimIn}|${JSON.stringify(element.props)}`
     : "none";

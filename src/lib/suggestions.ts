@@ -1,10 +1,6 @@
-/**
- * AI timing suggestions: build a compact prompt describing the composition,
- * call the model, and parse/validate its response into TimingSuggestion[].
- *
- * Provider call is isolated in `requestSuggestions` so swapping providers
- * (Anthropic, OpenAI, etc.) is a drop-in replacement for that one function.
- */
+// AI timing suggestions: build a compact prompt describing the composition,
+// call the model, parse/validate its response. The provider call is isolated
+// in `requestSuggestions` so swapping providers is a drop-in replacement.
 import type { EDL, BaseElement } from "./edl";
 import { isValidStart, isValidDuration } from "./validate";
 import { callGroq, stripFence, toFiniteNumber, round2 } from "./ai/groq";
@@ -42,17 +38,12 @@ export interface TimingFacts {
   deadAir: DeadAirFact[];
 }
 
-/**
- * Deterministic timing analysis. No model involved: computes end times,
- * same-layer overlaps, composition overshoots, and dead-air gaps with plain
- * arithmetic so the model never has to derive these facts itself.
- *
- * Dead-air uses a merge-intervals pass over ALL elements across ALL layers
- * (any layer showing something counts as covered). This mirrors the
- * occupied-interval idea in broll.ts's `overlapsOccupied`, but that function
- * only checks a single proposed interval against the occupied list, it does
- * not merge/union intervals to find gaps, so the merge logic here is new.
- */
+// Deterministic timing analysis, no model: end times, same-layer overlaps,
+// composition overshoots and dead-air gaps with plain arithmetic, so the
+// model never has to derive these itself.
+//
+// Dead air merges intervals across ALL layers — anything visible on any
+// layer counts as covered.
 export function analyseTiming(edl: EDL): TimingFacts {
   const overlaps: OverlapFact[] = [];
   const overshoots: OvershootFact[] = [];
@@ -93,8 +84,8 @@ export function analyseTiming(edl: EDL): TimingFacts {
     }
   }
 
-  // Dead air: merge all elements' intervals across every layer, then find
-  // the gaps between merged intervals (and at start/end) within [0, duration].
+  // Dead air: merge intervals across every layer, then find the gaps between
+  // merged intervals (and at start/end) within [0, duration].
   const sorted = allElements.slice().sort((a, b) => a.start - b.start);
   const merged: { start: number; end: number }[] = [];
   for (const { start, end } of sorted) {
@@ -198,12 +189,12 @@ Respond with ONLY a JSON object of this exact shape, no other text:
 Each "reason" must cite the specific fact it addresses (e.g. "fills the dead air from 13s to 15s" or "ends 1s past the composition end at 13s"). Do not use generic filler like "improves pacing" or "better flow", and do not state a timing claim that isn't one of the facts given above.`;
 }
 
-/** Thin wrapper over the shared Groq provider call, kept for existing callers/tests. */
+/** Thin wrapper over the shared Groq call, kept for existing callers/tests. */
 export async function requestSuggestions(prompt: string): Promise<{ content: string; model: string }> {
   return callGroq(prompt);
 }
 
-/** Parses and VALIDATES a model response into suggestions, discarding bad entries. */
+/** Parses and validates a model response, discarding bad entries. */
 export function parseSuggestions(raw: string, edl: EDL): TimingSuggestion[] {
   let parsed: unknown;
   try {

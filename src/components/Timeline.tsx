@@ -88,14 +88,9 @@ export default function Timeline() {
     originalStart: number;
     originalDuration: number;
     originalTrimIn: number;
-    /**
-     * Delta already handed to `trimElement`. `trimElement` shifts the CURRENT
-     * value by the delta it is given, but `deltaSeconds` below is measured from
-     * where the drag started, so passing it raw on every pointermove would
-     * re-apply the whole offset each time and compound. We pass the increment
-     * since the last accepted call instead, and leave this untouched when an
-     * edit is rejected so the next move retries the same increment.
-     */
+    // Track delta already handed to trimElement — it shifts by the delta amount,
+    // not absolute. We store what we've applied to avoid re-applying on each
+    // pointermove. If rejected, retry the same increment on next move.
     appliedDelta: number;
   } | null>(null);
 
@@ -129,11 +124,8 @@ export default function Timeline() {
     [present, pxToSeconds, moveElement, trimElement, showError],
   );
 
-  /**
-   * Listeners for the in-flight drag. An AbortController unbinds both of them in
-   * one call, which also covers a pointercancel or a drag that ends outside the
-   * window, so a drag can never get stuck.
-   */
+  // AbortController to unbind all drag listeners at once — covers pointercancel
+  // and drags ending outside the window so nothing gets stuck.
   const dragAbortRef = useRef<AbortController | null>(null);
 
   const endDragInteraction = useCallback(() => {

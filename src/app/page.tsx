@@ -12,11 +12,8 @@ import Toolbar from "@/components/Toolbar";
 import SuggestionsPanel from "@/components/SuggestionsPanel";
 import BrollPanel from "@/components/BrollPanel";
 
-/**
- * The composition the editor opens by default. `prisma/seed.ts` inserts it under
- * this id, so a fresh deploy has something to show without the visitor creating
- * anything.
- */
+// Default composition loaded on init. prisma/seed.ts seeds it so fresh
+// deploys show something without requiring user input.
 const DEFAULT_COMPOSITION_ID = SEED_EDL.id;
 
 export default function Home() {
@@ -66,12 +63,10 @@ export default function Home() {
     );
   }
 
-  // min-h-0 on this root matters: as a flex child of `body` it defaults to
-  // min-height:auto, so it cannot shrink below its own min-content height. Once the
-  // side panels are taller than the viewport that pins the page open past the window,
-  // and because `body` is overflow-hidden the excess is clipped with no scrollbar
-  // anywhere. min-h-0 lets it shrink so the panel column's own overflow-y-auto is
-  // what scrolls.
+  // min-h-0 on the root matters: as a flex child of body it defaults to
+  // min-height:auto and can't shrink below min-content. min-h-0 lets it shrink
+  // so the side panel's overflow-y-auto actually scrolls instead of pushing
+  // content off-screen when panels are taller than viewport.
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-black">
       {loadError && (

@@ -5,29 +5,20 @@ import { useEditorStore } from "@/lib/store";
 import { resolveAt, type EDL, type VisibleElement } from "@/lib/edl";
 import { needsSeek, idsToPause } from "@/lib/videoSync";
 
-/**
- * Module-level (singleton) playback state. Both Stage (which registers video
- * refs) and PlaybackControls (which drives play/pause/scrub) call
- * `usePlayback()` independently, as separate hook instances in separate
- * components. If this state lived in per-call `useRef`s, Stage's registered
- * videos would live in a different map than the one the rAF tick in
- * PlaybackControls reads, and sync would silently do nothing. Keeping it at
- * module scope means there is exactly one rAF loop and one video registry for
- * the whole app, which matches there being exactly one Stage on screen.
- */
+// Module-level playback state: shared singleton across all hook consumers (Stage,
+// PlaybackControls, etc.). If this lived in per-call useRefs, the video registry
+// in Stage would differ from the one the rAF tick reads, and sync would fail silently.
+// Exactly one rAF loop and one video map for the whole app.
 let rafId: number | null = null;
 let lastTs: number | null = null;
 const videoRefs = new Map<string, HTMLVideoElement>();
 let prevVisibleVideoIds = new Set<string>();
-/** How many mounted components currently use this hook. See the cleanup effect. */
+// Tracks mounted hook consumers; cleanup tears down the rAF loop only when count hits 0.
 let consumerCount = 0;
 
-/**
- * Applies the hard-seek / play-pause / pause-on-exit rules for the given
- * frame. Called from the rAF tick while playing, and once synchronously
- * after a scrub while paused (a scrub must move the video frame even when
- * not playing).
- */
+// Apply seek/play/pause and pause-on-exit rules for the current frame.
+// Called from the rAF tick while playing, and once synchronously after a scrub
+// (scrubs must move video frames even when paused).
 function syncVideos(edl: EDL, t: number, playing: boolean, speed: number) {
   const visible = resolveAt(edl, t);
   const visibleVideos = visible.filter((v): v is VisibleElement => v.type === "video");
@@ -92,12 +83,9 @@ function tick(now: number) {
   rafId = requestAnimationFrame(tick);
 }
 
-/**
- * Drives the playhead via a single rAF loop. Reads live state from the
- * Zustand store inside the tick (useEditorStore.getState()) instead of
- * capturing playing/speed/playhead in the callback's closure, so the effect
- * never needs to re-run when those values change.
- */
+// Drive playhead via a single rAF loop. Reads live store state inside the tick
+// (useEditorStore.getState()) instead of capturing it in closure, so the effect
+// never re-runs when playing/speed/playhead change.
 export function usePlayback() {
   const play = useCallback(() => {
     const { present, playing } = useEditorStore.getState();
@@ -152,13 +140,10 @@ export function usePlayback() {
     }
   }, []);
 
-  /**
-   * The rAF loop and the video registry are module-level singletons, shared by
-   * every component that calls this hook (Stage, PlaybackControls, Timeline).
-   * That means an unmount cleanup cannot just cancel the loop: whichever consumer
-   * unmounted first would stop playback for the ones still mounted. So consumers
-   * are counted, and the loop is only torn down when the last one goes away.
-   */
+  // The rAF loop and video registry are module singletons, shared by all hook consumers
+  // (Stage, PlaybackControls, Timeline). Can't just cancel on unmount—the first
+  // consumer to unmount would stop playback for the rest. Count consumers, tear down
+  // only when the last one goes away.
   useEffect(() => {
     consumerCount += 1;
     return () => {
