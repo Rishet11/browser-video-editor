@@ -6,7 +6,7 @@ composition to Postgres, and exports a playable HTML file.
 
 - **Live app:** https://rishet-video-editor.vercel.app
 - **Repository:** https://github.com/Rishet11/browser-video-editor
-- **Loom walkthrough:** `https://www.loom.com/share/593f3cd0223d4d3bbbc4d101fb9a7a27`
+- **Loom walkthrough:** https://www.loom.com/share/593f3cd0223d4d3bbbc4d101fb9a7a27
 
 ## What is included
 
