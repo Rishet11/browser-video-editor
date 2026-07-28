@@ -137,8 +137,9 @@ The selected AI bonus is **timing suggestions**. It proposes a start and duratio
 for an existing element, explains the suggestion, and lets the editor apply or
 dismiss it one row at a time.
 
-I also included a small **B-roll planner**. It finds uncovered stretches and
-returns a shot type plus copyable stock-footage search terms. It does not invent
+I also included a small **B-roll planner**. It finds dead air and long unbroken
+visual stretches that could benefit from a cutaway, then returns a shot type plus
+copyable stock-footage search terms. It does not invent
 an asset URL or silently insert a clip. Both tools validate model output before it
 reaches the UI, and applied timing changes still pass through the ordinary `PATCH`
 route.

@@ -120,7 +120,7 @@ export default function Home() {
             ) : (
               <div className="flex flex-col gap-3">
                 <p className="text-xs leading-5 text-neutral-400">
-                  Use timing help to review pacing, or plan B-roll for uncovered moments.
+                  Use timing help to review pacing, or plan B-roll for moments that need more visual variety.
                   Suggestions never change the edit until you choose to apply them.
                 </p>
                 <SuggestionsPanel />

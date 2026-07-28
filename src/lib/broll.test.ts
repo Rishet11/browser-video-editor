@@ -155,7 +155,7 @@ describe("parseBrollSuggestions", () => {
     expect(parseBrollSuggestions(raw, edl)).toEqual([]);
   });
 
-  it("rejects a hallucinated gap that overlaps a real element", () => {
+  it("accepts a cutaway opportunity over an existing visual", () => {
     const edl = makeEdl();
     // el-2 occupies [6,9); this claims a gap at [7,9) which overlaps it
     const raw = JSON.stringify({
@@ -170,7 +170,7 @@ describe("parseBrollSuggestions", () => {
         },
       ],
     });
-    expect(parseBrollSuggestions(raw, edl)).toEqual([]);
+    expect(parseBrollSuggestions(raw, edl)).toHaveLength(1);
   });
 
   it("drops entries with empty searchTerms", () => {

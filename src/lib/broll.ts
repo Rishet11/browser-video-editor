@@ -1,5 +1,5 @@
 /**
- * AI B-roll suggestions: find coverage gaps in the composition (dead air,
+ * AI B-roll suggestions: find coverage opportunities in the composition (dead air,
  * text-only stretches with no visual, long unbroken shots) and propose
  * stock-footage search terms for them. Keyword-only: this feature never
  * proposes an element to insert, only search terms for a human to source
@@ -50,9 +50,9 @@ export function buildBrollPrompt(edl: EDL): string {
 
 ${JSON.stringify(elements, null, 0)}
 
-Find COVERAGE GAPS: dead air where nothing is playing, a stretch covered only by text with no visual, or a long unbroken shot over roughly 6 seconds that would benefit from a cutaway. For each gap, suggest stock-footage search terms that would work well there.
+Find COVERAGE OPPORTUNITIES: dead air where nothing is playing, a stretch covered only by text with no visual, or a long unbroken shot over roughly 6 seconds that would benefit from a cutaway. For each opportunity, suggest stock-footage search terms that would work well there.
 
-Do NOT change any existing element's timing. Only propose new gaps to fill with B-roll; never suggest moving, resizing, or removing an existing element.
+Do NOT change any existing element's timing. You may recommend B-roll over an existing background image or video. This is normal editor compositing, not a conflict. Never suggest moving, resizing, or removing an existing element.
 
 Respond with ONLY a JSON object of this exact shape, no other text:
 {"suggestions":[{"afterElementId":"<id or \\"__start__\\">","gapStart":<number>,"gapDuration":<number>,"searchTerms":["<short phrase>"],"shotType":"establishing"|"cutaway"|"closeup"|"action","reason":"<short specific clause>"}]}
@@ -85,16 +85,6 @@ export function parseBrollSuggestions(raw: string, edl: EDL): BrollSuggestion[] 
   const allElements = edl.layers.flatMap((l) => l.elements);
   const validIds = new Set(allElements.map((e) => e.id));
 
-  // Occupied intervals across ALL layers: a suggested gap that overlaps any
-  // real element is a hallucinated gap, the B-roll analogue of a
-  // hallucinated element id in the timing validator. There is no equivalent
-  // check in parseSuggestions because that validator moves existing
-  // elements rather than claiming new empty space.
-  const occupied = allElements.map((e) => ({ start: e.start, end: e.start + e.duration }));
-  function overlapsOccupied(start: number, end: number): boolean {
-    return occupied.some((o) => start < o.end && end > o.start);
-  }
-
   const seen = new Set<string>();
   const result: BrollSuggestion[] = [];
 
@@ -111,9 +101,6 @@ export function parseBrollSuggestions(raw: string, edl: EDL): BrollSuggestion[] 
     if (gapStart === null || gapDuration === null) continue;
     if (!isValidStart(gapStart) || !isValidDuration(gapDuration)) continue;
     if (gapStart + gapDuration > edl.duration) continue;
-
-    const gapEnd = gapStart + gapDuration;
-    if (overlapsOccupied(gapStart, gapEnd)) continue;
 
     const rawTerms = Array.isArray(e.searchTerms) ? e.searchTerms : [];
     const searchTerms = rawTerms

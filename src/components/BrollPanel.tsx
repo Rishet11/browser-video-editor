@@ -67,7 +67,7 @@ export default function BrollPanel() {
       <div className="flex items-center justify-between">
         <div>
           <div className="font-medium">B-roll planner</div>
-          <div className="mt-0.5 text-[11px] text-neutral-500">Finds gaps and gives useful search language</div>
+          <div className="mt-0.5 text-[11px] text-neutral-500">Finds coverage opportunities and useful search language</div>
         </div>
         <button
           type="button"
@@ -87,7 +87,7 @@ export default function BrollPanel() {
         <p className="text-xs text-neutral-500">No suggestions requested yet.</p>
       )}
       {!loading && rows.length === 0 && model !== null && (
-        <p className="text-xs text-neutral-500">No coverage gaps found.</p>
+        <p className="text-xs text-neutral-500">No coverage opportunities found.</p>
       )}
 
       {model && <p className="text-[10px] text-neutral-500">model: {model}</p>}
@@ -99,7 +99,7 @@ export default function BrollPanel() {
             className="flex flex-col gap-1 rounded border border-neutral-800 bg-neutral-950 p-2"
           >
             <div className="text-xs font-medium">
-              gap {formatSeconds(row.gapStart)}s – {formatSeconds(row.gapStart + row.gapDuration)}s (
+              at {formatSeconds(row.gapStart)}s – {formatSeconds(row.gapStart + row.gapDuration)}s (
               {row.shotType})
             </div>
             <div className="flex flex-wrap gap-1">
